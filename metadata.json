@@ -1,0 +1,6 @@
+{
+  "name": "إدارة الأصناف - Product Master",
+  "description": "وحدة إدارة بطاقة وسجل الأصناف والخدمات الأساسية لنظام نقاط البيع وإدارة المخزون والمحاسبة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
