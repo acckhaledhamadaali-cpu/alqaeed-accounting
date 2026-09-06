@@ -12,9 +12,32 @@ import {
   Category, 
   UnitOfMeasure, 
   ProductBarcode,
-  BarcodeInput 
+  BarcodeInput,
+  ProductType,
+  EntityStatus
 } from '../types/product';
 import { buildCategoryPath } from '../data/masterDataUtils';
+
+// Internal UI-only row representation with stable client-side React key
+interface BarcodeFormRow {
+  rowKey: string;      // Stable React key: existing b.id OR a stable client-side UUID for new rows
+  id?: string;         // Existing persistent barcode ID (undefined for newly created rows)
+  barcode: string;
+  isPrimary: boolean;
+}
+
+interface ProductFormDataState {
+  nameAr: string;
+  nameEn?: string;
+  sku: string;
+  categoryId: string;
+  baseUomId: string;
+  type: ProductType;
+  status: EntityStatus;
+  description?: string;
+  imageUrl?: string;
+  barcodes: BarcodeFormRow[];
+}
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -43,7 +66,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 }) => {
   const isEditing = !!productToEdit;
 
-  const [formData, setFormData] = useState<CreateProductFormInput>({
+  const [formData, setFormData] = useState<ProductFormDataState>({
     nameAr: '',
     nameEn: '',
     sku: '',
@@ -53,7 +76,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     status: 'active',
     description: '',
     imageUrl: '',
-    barcodes: [{ barcode: '', isPrimary: true }],
+    barcodes: [{ rowKey: crypto.randomUUID(), barcode: '', isPrimary: true }],
   });
 
   const [errors, setErrors] = useState<{
@@ -62,19 +85,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     categoryId?: string;
     baseUomId?: string;
     barcodesGeneral?: string;
-    barcodeItems?: Record<number, string>;
+    barcodeItems?: Record<string, string>;
   }>({});
 
   useEffect(() => {
     if (productToEdit) {
-      // PRESERVE EXISTING BARCODE IDs
-      const editBarcodes: BarcodeInput[] = productToEdit.barcodes.length > 0
+      // PRESERVE EXISTING BARCODE IDs with exact ID as stable React key
+      const editBarcodes: BarcodeFormRow[] = productToEdit.barcodes.length > 0
         ? productToEdit.barcodes.map((b) => ({
-            id: b.id, // Preserved exact existing ID!
+            rowKey: b.id, // Preserved exact existing ID as React key!
+            id: b.id,     // Preserved exact existing ID!
             barcode: b.barcode,
             isPrimary: b.isPrimary,
           }))
-        : [{ barcode: '', isPrimary: true }];
+        : [{ rowKey: crypto.randomUUID(), barcode: '', isPrimary: true }];
 
       // Ensure exactly 1 is primary
       const primaryCount = editBarcodes.filter((b) => b.isPrimary).length;
@@ -107,7 +131,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         status: 'active',
         description: '',
         imageUrl: '',
-        barcodes: [{ barcode: '', isPrimary: true }],
+        barcodes: [{ rowKey: crypto.randomUUID(), barcode: '', isPrimary: true }],
       });
     }
     setErrors({});
@@ -115,21 +139,27 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Add Alternative Barcode row (id is undefined for new barcodes)
+  // Add Alternative Barcode row with stable temporary client-side rowKey
   const handleAddAlternativeBarcode = () => {
     setFormData((prev) => ({
       ...prev,
-      barcodes: [...prev.barcodes, { barcode: '', isPrimary: false }],
+      barcodes: [
+        ...prev.barcodes,
+        { rowKey: crypto.randomUUID(), barcode: '', isPrimary: false },
+      ],
     }));
   };
 
-  // Remove Barcode row (only removes the specific row)
-  const handleRemoveBarcode = (index: number) => {
+  // Remove Barcode row by stable rowKey (only removes the specific row)
+  const handleRemoveBarcode = (rowKey: string) => {
     if (formData.barcodes.length <= 1) return;
 
     setFormData((prev) => {
-      const isRemovingPrimary = prev.barcodes[index]?.isPrimary;
-      const nextBars = prev.barcodes.filter((_, i) => i !== index);
+      const targetIndex = prev.barcodes.findIndex((b) => b.rowKey === rowKey);
+      if (targetIndex === -1) return prev;
+
+      const isRemovingPrimary = prev.barcodes[targetIndex]?.isPrimary;
+      const nextBars = prev.barcodes.filter((b) => b.rowKey !== rowKey);
 
       // If we removed the primary barcode, designate the first remaining as primary
       if (isRemovingPrimary && nextBars.length > 0) {
@@ -138,31 +168,40 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
       return { ...prev, barcodes: nextBars };
     });
-  };
 
-  // Change Barcode text (keeps the existing id intact!)
-  const handleBarcodeChange = (index: number, val: string) => {
-    setFormData((prev) => {
-      const nextBars = [...prev.barcodes];
-      nextBars[index] = { ...nextBars[index], barcode: val };
-      return { ...prev, barcodes: nextBars };
-    });
-
-    if (errors.barcodeItems?.[index]) {
+    if (errors.barcodeItems?.[rowKey]) {
       setErrors((prev) => {
         const nextItems = { ...prev.barcodeItems };
-        delete nextItems[index];
+        delete nextItems[rowKey];
         return { ...prev, barcodeItems: nextItems };
       });
     }
   };
 
-  // Radio selection: Exactly ONE primary barcode
-  const handleSetPrimaryBarcode = (index: number) => {
+  // Change Barcode text by stable rowKey (keeps existing id intact!)
+  const handleBarcodeChange = (rowKey: string, val: string) => {
     setFormData((prev) => {
-      const nextBars = prev.barcodes.map((b, i) => ({
+      const nextBars = prev.barcodes.map((b) =>
+        b.rowKey === rowKey ? { ...b, barcode: val } : b
+      );
+      return { ...prev, barcodes: nextBars };
+    });
+
+    if (errors.barcodeItems?.[rowKey]) {
+      setErrors((prev) => {
+        const nextItems = { ...prev.barcodeItems };
+        delete nextItems[rowKey];
+        return { ...prev, barcodeItems: nextItems };
+      });
+    }
+  };
+
+  // Radio selection: Exactly ONE primary barcode by stable rowKey
+  const handleSetPrimaryBarcode = (rowKey: string) => {
+    setFormData((prev) => {
+      const nextBars = prev.barcodes.map((b) => ({
         ...b,
-        isPrimary: i === index, // Automatically unsets all others!
+        isPrimary: b.rowKey === rowKey,
       }));
       return { ...prev, barcodes: nextBars };
     });
@@ -255,20 +294,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       (b) => b.productId !== productToEdit?.id
     );
 
-    formData.barcodes.forEach((bItem, idx) => {
+    formData.barcodes.forEach((bItem) => {
       const code = bItem.barcode.trim();
       if (!code) {
         if (bItem.isPrimary) {
-          itemErrors[idx] = 'قيمة الباركود الأساسي مطلوبة.';
+          itemErrors[bItem.rowKey] = 'قيمة الباركود الأساسي مطلوبة.';
         } else {
-          itemErrors[idx] = 'يرجى إدخال قيمة الباركود أو حذف هذا السطر.';
+          itemErrors[bItem.rowKey] = 'يرجى إدخال قيمة الباركود أو حذف هذا السطر.';
         }
         return;
       }
 
       // Check duplicates within the same product form
       if (seenBarcodesInForm.has(code)) {
-        itemErrors[idx] = 'هذا الباركود مكرر في نفس بطاقة الصنف.';
+        itemErrors[bItem.rowKey] = 'هذا الباركود مكرر في نفس بطاقة الصنف.';
         return;
       }
       seenBarcodesInForm.add(code);
@@ -278,7 +317,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         (ob) => ob.barcode.trim() === code
       );
       if (existsInSystem) {
-        itemErrors[idx] = 'هذا الباركود مسجل لصنف آخر في النظام.';
+        itemErrors[bItem.rowKey] = 'هذا الباركود مسجل لصنف آخر في النظام.';
       }
     });
 
@@ -293,7 +332,25 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
-      onSubmit(formData);
+      // Map UI-only rows back to pure BarcodeInput[] (stripping temporary rowKey)
+      const cleanBarcodes: BarcodeInput[] = formData.barcodes.map((b) => ({
+        ...(b.id ? { id: b.id } : {}),
+        barcode: b.barcode.trim(),
+        isPrimary: b.isPrimary,
+      }));
+
+      onSubmit({
+        nameAr: formData.nameAr,
+        nameEn: formData.nameEn,
+        sku: formData.sku,
+        categoryId: formData.categoryId,
+        baseUomId: formData.baseUomId,
+        type: formData.type,
+        status: formData.status,
+        description: formData.description,
+        imageUrl: formData.imageUrl,
+        barcodes: cleanBarcodes,
+      });
       onClose();
     }
   };
@@ -416,13 +473,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
               {/* Barcode Rows */}
               <div className="space-y-2">
-                {formData.barcodes.map((bItem, idx) => (
-                  <div key={idx} className="space-y-1">
+                {formData.barcodes.map((bItem) => (
+                  <div key={bItem.rowKey} className="space-y-1">
                     <div className="flex items-center gap-2">
                       {/* Primary Radio Selector */}
                       <button
                         type="button"
-                        onClick={() => handleSetPrimaryBarcode(idx)}
+                        onClick={() => handleSetPrimaryBarcode(bItem.rowKey)}
                         className={`px-2.5 py-1.5 rounded text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1 border ${
                           bItem.isPrimary
                             ? 'bg-slate-900 text-white border-slate-900'
@@ -439,10 +496,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         type="text"
                         dir="ltr"
                         value={bItem.barcode}
-                        onChange={(e) => handleBarcodeChange(idx, e.target.value)}
+                        onChange={(e) => handleBarcodeChange(bItem.rowKey, e.target.value)}
                         placeholder={bItem.isPrimary ? 'أدخل الباركود الأساسي...' : 'أدخل باركود بديل...'}
                         className={`flex-1 px-3 py-1.5 bg-white border rounded text-xs sm:text-sm font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 text-left ${
-                          errors.barcodeItems?.[idx] ? 'border-rose-400' : 'border-slate-300'
+                          errors.barcodeItems?.[bItem.rowKey] ? 'border-rose-400' : 'border-slate-300'
                         }`}
                       />
 
@@ -457,7 +514,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       {formData.barcodes.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveBarcode(idx)}
+                          onClick={() => handleRemoveBarcode(bItem.rowKey)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
                           title="حذف هذا الباركود"
                         >
@@ -466,8 +523,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       )}
                     </div>
 
-                    {errors.barcodeItems?.[idx] && (
-                      <p className="text-xs text-rose-600 pr-1">{errors.barcodeItems[idx]}</p>
+                    {errors.barcodeItems?.[bItem.rowKey] && (
+                      <p className="text-xs text-rose-600 pr-1">{errors.barcodeItems[bItem.rowKey]}</p>
                     )}
                   </div>
                 ))}
