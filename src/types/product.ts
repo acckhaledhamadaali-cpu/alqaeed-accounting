@@ -136,5 +136,5 @@ export interface ValidationErrors {
   categoryId?: string;
   baseUomId?: string;
   barcodes?: string;
-  barcodeItems?: Record<number, string>;
+  barcodeItems?: Record<string, string>;
 }
