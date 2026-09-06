@@ -199,19 +199,47 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     // 3. Category & UoM
     if (!formData.categoryId) {
       newErrors.categoryId = 'يرجى اختيار التصنيف التابع له الصنف.';
-    } else if (!isEditing) {
+    } else {
       const selectedCat = categories.find((c) => c.id === formData.categoryId);
-      if (selectedCat && selectedCat.status === 'archived') {
-        newErrors.categoryId = 'التصنيف المختار مؤرشف ولا يمكن اختياره لصنف جديد.';
+      if (!selectedCat) {
+        newErrors.categoryId = 'التصنيف المختار غير موجود.';
+      } else if (!isEditing) {
+        // Creating a new product: Category must be active
+        if (selectedCat.status === 'archived') {
+          newErrors.categoryId = 'التصنيف المختار مؤرشف ولا يمكن اختياره لصنف جديد.';
+        }
+      } else {
+        // Editing an existing product:
+        // CASE A: Product already has an archived Category -> Allowed without changing
+        // CASE B: User changes Category to an active Category -> Allowed
+        // CASE C: User changes Category to an archived Category -> Rejected
+        const isCategoryChanged = formData.categoryId !== productToEdit?.categoryId;
+        if (isCategoryChanged && selectedCat.status === 'archived') {
+          newErrors.categoryId = 'لا يمكن اختيار تصنيف مؤرشف لصنف موجود. يرجى اختيار تصنيف نشط.';
+        }
       }
     }
 
     if (!formData.baseUomId) {
       newErrors.baseUomId = 'يرجى اختيار وحدة القياس الأساسية.';
-    } else if (!isEditing) {
+    } else {
       const selectedUom = uoms.find((u) => u.id === formData.baseUomId);
-      if (selectedUom && selectedUom.status === 'archived') {
-        newErrors.baseUomId = 'وحدة القياس المختارة مؤرشفة ولا يمكن اختيارها لصنف جديد.';
+      if (!selectedUom) {
+        newErrors.baseUomId = 'وحدة القياس المختارة غير موجودة.';
+      } else if (!isEditing) {
+        // Creating a new product: Base UoM must be active
+        if (selectedUom.status === 'archived') {
+          newErrors.baseUomId = 'وحدة القياس المختارة مؤرشفة ولا يمكن اختيارها لصنف جديد.';
+        }
+      } else {
+        // Editing an existing product:
+        // CASE A: Product already has an archived Base UoM -> Allowed without changing
+        // CASE B: User changes Base UoM to an active UoM -> Allowed
+        // CASE C: User changes Base UoM to an archived UoM -> Rejected
+        const isUomChanged = formData.baseUomId !== productToEdit?.baseUomId;
+        if (isUomChanged && selectedUom.status === 'archived') {
+          newErrors.baseUomId = 'لا يمكن اختيار وحدة قياس مؤرشفة. يرجى اختيار وحدة قياس نشطة.';
+        }
       }
     }
 
@@ -472,8 +500,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }`}
               >
                 <option value="">— اختر التصنيف —</option>
-                {categories
-                  .filter((cat) => cat.status === 'active' || (isEditing && cat.id === formData.categoryId))
+                {(isEditing ? categories : categories.filter((cat) => cat.status === 'active'))
                   .map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {buildCategoryPath(cat.id, categories)}
@@ -512,8 +539,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }`}
               >
                 <option value="">— اختر وحدة القياس —</option>
-                {uoms
-                  .filter((u) => u.status === 'active' || (isEditing && u.id === formData.baseUomId))
+                {(isEditing ? uoms : uoms.filter((u) => u.status === 'active'))
                   .map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.nameAr} ({u.code})
