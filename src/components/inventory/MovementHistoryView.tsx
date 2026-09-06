@@ -63,7 +63,10 @@ export const MovementHistoryView: React.FC<MovementHistoryViewProps> = ({
     });
   }, [movements, selectedType, selectedWarehouseId, searchQuery, productMap]);
 
-  const renderMovementTypeBadge = (type: StockMovement['movementType'], sourceType?: string) => {
+  const renderMovementTypeBadge = (
+    type: StockMovement['movementType'],
+    adjustmentDirection?: StockMovement['adjustmentDirection']
+  ) => {
     switch (type) {
       case 'receipt':
         return (
@@ -97,7 +100,7 @@ export const MovementHistoryView: React.FC<MovementHistoryViewProps> = ({
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
             <Boxes className="w-3 h-3" />
-            <span>تسوية {sourceType === 'decrease' ? 'نقص' : 'زيادة'} (Adjustment)</span>
+            <span>تسوية {adjustmentDirection === 'decrease' ? 'نقص' : 'زيادة'} (Adjustment)</span>
           </span>
         );
     }
@@ -209,7 +212,7 @@ export const MovementHistoryView: React.FC<MovementHistoryViewProps> = ({
                         {locPath || <span className="text-slate-400">عام</span>}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {renderMovementTypeBadge(m.movementType, m.sourceType)}
+                        {renderMovementTypeBadge(m.movementType, m.adjustmentDirection)}
                       </td>
                       <td className="px-4 py-3 font-mono font-bold text-slate-900">
                         {m.quantity}

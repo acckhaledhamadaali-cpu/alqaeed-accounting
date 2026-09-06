@@ -48,6 +48,7 @@ export interface StockMovement {
   locationId?: string;
 
   movementType: StockMovementType;
+  adjustmentDirection?: AdjustmentDirection; // Used strictly when movementType === 'adjustment'
 
   quantity: number;
   uomId: string;
@@ -55,8 +56,8 @@ export interface StockMovement {
   baseQuantity: number;
   baseUomId: string;
 
-  sourceType?: string;
-  sourceId?: string;
+  sourceType?: string; // Reserved future reference field (not for adjustment direction)
+  sourceId?: string;   // Reserved future reference field (not for adjustment direction)
 
   relatedMovementId?: string;
 

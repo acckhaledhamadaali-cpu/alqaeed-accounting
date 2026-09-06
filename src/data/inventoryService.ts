@@ -3,6 +3,7 @@ import {
   Warehouse, 
   InventoryLocation, 
   StockMovement, 
+  StockMovementType,
   StockBalanceRecord,
   CreateStockMovementInput,
   TransferStockInput,
@@ -54,12 +55,12 @@ export function calculateStockBalance(
     const isOutbound =
       m.movementType === 'issue' ||
       m.movementType === 'transfer_out' ||
-      (m.movementType === 'adjustment' && m.sourceType === 'decrease');
+      (m.movementType === 'adjustment' && m.adjustmentDirection === 'decrease');
 
     const isInbound =
       m.movementType === 'receipt' ||
       m.movementType === 'transfer_in' ||
-      (m.movementType === 'adjustment' && m.sourceType !== 'decrease');
+      (m.movementType === 'adjustment' && m.adjustmentDirection === 'increase');
 
     if (isInbound) {
       return acc + m.baseQuantity;
@@ -101,21 +102,41 @@ export function getAllStockBalances(
     const isOutbound =
       m.movementType === 'issue' ||
       m.movementType === 'transfer_out' ||
-      (m.movementType === 'adjustment' && m.sourceType === 'decrease');
+      (m.movementType === 'adjustment' && m.adjustmentDirection === 'decrease');
 
-    const delta = isOutbound ? -m.baseQuantity : m.baseQuantity;
+    const isInbound =
+      m.movementType === 'receipt' ||
+      m.movementType === 'transfer_in' ||
+      (m.movementType === 'adjustment' && m.adjustmentDirection === 'increase');
 
-    const existing = balanceMap.get(key);
-    if (existing) {
-      existing.baseQuantity += delta;
-    } else {
-      balanceMap.set(key, {
-        productId: m.productId,
-        warehouseId: m.warehouseId,
-        locationId: m.locationId,
-        baseQuantity: delta,
-        baseUomId,
-      });
+    if (isInbound) {
+      const delta = m.baseQuantity;
+      const existing = balanceMap.get(key);
+      if (existing) {
+        existing.baseQuantity += delta;
+      } else {
+        balanceMap.set(key, {
+          productId: m.productId,
+          warehouseId: m.warehouseId,
+          locationId: m.locationId,
+          baseQuantity: delta,
+          baseUomId,
+        });
+      }
+    } else if (isOutbound) {
+      const delta = -m.baseQuantity;
+      const existing = balanceMap.get(key);
+      if (existing) {
+        existing.baseQuantity += delta;
+      } else {
+        balanceMap.set(key, {
+          productId: m.productId,
+          warehouseId: m.warehouseId,
+          locationId: m.locationId,
+          baseQuantity: delta,
+          baseUomId,
+        });
+      }
     }
   }
 
@@ -147,7 +168,35 @@ export function executeStockMovement(
     };
   }
 
-  // 2. Product Validation
+  // 2. Movement Type & Adjustment Direction Validation
+  const VALID_MOVEMENT_TYPES: StockMovementType[] = [
+    'receipt',
+    'issue',
+    'transfer_in',
+    'transfer_out',
+    'adjustment',
+  ];
+
+  if (!input.movementType || !VALID_MOVEMENT_TYPES.includes(input.movementType)) {
+    return { success: false, error: 'نوع الحركة المخزنية غير صالح.' };
+  }
+
+  if (input.movementType === 'adjustment') {
+    if (!input.adjustmentDirection) {
+      return {
+        success: false,
+        error: 'يجب تحديد اتجاه التسوية (زيادة أو نقص) عند اختيار نوع الحركة تسوية.',
+      };
+    }
+    if (input.adjustmentDirection !== 'increase' && input.adjustmentDirection !== 'decrease') {
+      return {
+        success: false,
+        error: 'اتجاه التسوية غير صالح. يجب أن يكون زيادة (increase) أو نقص (decrease).',
+      };
+    }
+  }
+
+  // 3. Product Validation
   const product = products.find((p) => p.id === input.productId);
   if (!product) {
     return { success: false, error: 'الصنف المحدد غير موجود في سجل الأصناف.' };
@@ -161,7 +210,7 @@ export function executeStockMovement(
     return { success: false, error: 'الصنف المحدد مؤرشف ولا يمكن إنشاء حركات مخزنية له.' };
   }
 
-  // 3. Warehouse Validation
+  // 4. Warehouse Validation
   const warehouse = warehouses.find((w) => w.id === input.warehouseId);
   if (!warehouse) {
     return { success: false, error: 'المستودع المحدد غير موجود.' };
@@ -171,7 +220,7 @@ export function executeStockMovement(
     return { success: false, error: 'المستودع المحدد مؤرشف ولا يمكن إنشاء حركات جديدة عليه.' };
   }
 
-  // 4. Location Validation (if specified)
+  // 5. Location Validation (if specified)
   if (input.locationId) {
     const loc = locations.find((l) => l.id === input.locationId);
     if (!loc) {
@@ -190,7 +239,7 @@ export function executeStockMovement(
     }
   }
 
-  // 5. UoM Validation
+  // 6. UoM Validation
   const uom = uoms.find((u) => u.id === input.uomId);
   if (!uom) {
     return { success: false, error: 'وحدة القياس المحددة غير موجودة.' };
@@ -206,7 +255,7 @@ export function executeStockMovement(
   const baseQuantity = input.quantity;
   const baseUomId = product.baseUomId;
 
-  // 6. Movement Direction & Negative Stock Prevention
+  // 7. Movement Direction & Negative Stock Prevention
   const isOutbound =
     input.movementType === 'issue' ||
     input.movementType === 'transfer_out' ||
@@ -231,22 +280,18 @@ export function executeStockMovement(
   const now = new Date().toISOString();
   const movementId = crypto.randomUUID();
 
-  let finalSourceType = input.sourceType;
-  if (input.movementType === 'adjustment') {
-    finalSourceType = input.adjustmentDirection === 'decrease' ? 'decrease' : 'increase';
-  }
-
   const newMovement: StockMovement = {
     id: movementId,
     productId: input.productId,
     warehouseId: input.warehouseId,
     locationId: input.locationId || undefined,
     movementType: input.movementType,
+    adjustmentDirection: input.movementType === 'adjustment' ? input.adjustmentDirection : undefined,
     quantity: input.quantity,
     uomId: input.uomId,
     baseQuantity,
     baseUomId,
-    sourceType: finalSourceType,
+    sourceType: input.sourceType,
     sourceId: input.sourceId,
     movementDate: input.movementDate || now,
     createdAt: now,
@@ -522,6 +567,41 @@ export function toggleWarehouseStatus(
 }
 
 /**
+ * Non-recursive, cycle-safe verification for location hierarchies.
+ * Detects if assigning proposedParentId to locationId would introduce a circular hierarchy.
+ */
+export function wouldCreateLocationCycle(
+  locationId: string,
+  proposedParentId: string | null | undefined,
+  locations: InventoryLocation[]
+): boolean {
+  if (!proposedParentId) return false;
+  if (proposedParentId === locationId) return true;
+
+  const locationMap = new Map<string, InventoryLocation>(
+    locations.map((loc) => [loc.id, loc])
+  );
+
+  const visited = new Set<string>();
+  let currentId: string | null | undefined = proposedParentId;
+
+  while (currentId) {
+    if (currentId === locationId) {
+      return true; // We encountered locationId while traversing ancestors of proposedParentId
+    }
+    if (visited.has(currentId)) {
+      return true; // Existing loop in graph detected
+    }
+    visited.add(currentId);
+
+    const parentLoc = locationMap.get(currentId);
+    currentId = parentLoc?.parentId;
+  }
+
+  return false;
+}
+
+/**
  * Storage Location Master Data Operations
  */
 export function createLocation(
@@ -565,7 +645,7 @@ export function createLocation(
       return { success: false, error: 'الموقع الأب يجب أن يتبع لنفس المستودع.' };
     }
     if (parent.status === 'archived') {
-      return { success: false, error: 'لا يمكن إنشاء موقع نشط تحت موقع أب مؤرشف.' };
+      return { success: false, error: 'لا يمكن ربط الموقع بموقع أب مؤرشف.' };
     }
   }
 
@@ -600,7 +680,7 @@ export function updateLocation(
     return { success: false, error: 'اسم موقع التخزين بالعربية مطلوب.' };
   }
 
-  // Circular parent check
+  // Parent hierarchy & integrity validation
   if (input.parentId) {
     if (input.parentId === id) {
       return { success: false, error: 'لا يمكن تعيين الموقع كأب لنفسه.' };
@@ -611,6 +691,15 @@ export function updateLocation(
     }
     if (parent.warehouseId !== loc.warehouseId) {
       return { success: false, error: 'الموقع الأب يجب أن يتبع لنفس المستودع.' };
+    }
+    if (parent.status === 'archived') {
+      return { success: false, error: 'لا يمكن ربط الموقع بموقع أب مؤرشف.' };
+    }
+    if (wouldCreateLocationCycle(id, input.parentId, locations)) {
+      return {
+        success: false,
+        error: 'لا يمكن تعيين هذا الموقع كأب لأنه يؤدي إلى حلقة دائرية في الهيكل الهرمي للمواقع.',
+      };
     }
   }
 

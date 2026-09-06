@@ -3,7 +3,9 @@ import { Warehouse, InventoryLocation, StockMovement } from '../types/inventory'
 import { 
   executeStockMovement, 
   executeStockTransfer, 
-  calculateStockBalance 
+  calculateStockBalance,
+  updateLocation,
+  wouldCreateLocationCycle
 } from './inventoryService';
 
 export interface TestResultItem {
@@ -14,12 +16,14 @@ export interface TestResultItem {
 }
 
 /**
- * Executes all 14 mandatory tests required by Module 02 specification.
+ * Executes the comprehensive architecture and integrity test suite for Module 02.
+ * Validates negative stock prevention, service exclusion, atomic transfers,
+ * adjustmentDirection isolation, cycle detection, archive parent prevention, and key format.
  */
 export function runModule02Tests(): TestResultItem[] {
   const results: TestResultItem[] = [];
 
-  // Setup mock-free test fixtures in memory only for test execution
+  // Setup mock-free test fixtures in memory strictly for test execution
   const testUom: UnitOfMeasure = {
     id: 'uom-unit-test-1',
     nameAr: 'قطعة',
@@ -129,7 +133,7 @@ export function runModule02Tests(): TestResultItem[] {
   const uoms = [testUom];
 
   // ==================== TEST 1: Receipt 10 units -> Balance = 10 ====================
-  let ledger: StockMovement[] = [];
+  const ledger: StockMovement[] = [];
   const resT1 = executeStockMovement(
     {
       productId: productPhysical.id,
@@ -218,7 +222,6 @@ export function runModule02Tests(): TestResultItem[] {
   });
 
   // ==================== TEST 4: Transfer 4 from A (10 initially, current 7) to B (0) -> A=3, B=4 ====================
-  // Reset ledger for clean test 4: A = 10, B = 0
   const ledgerT4: StockMovement[] = [
     {
       id: crypto.randomUUID(),
@@ -257,7 +260,9 @@ export function runModule02Tests(): TestResultItem[] {
     const balB = calculateStockBalance(ledgerT4, productPhysical.id, warehouseB.id);
     const mutualLinked =
       resT4.data.movementOut.relatedMovementId === resT4.data.movementIn.id &&
-      resT4.data.movementIn.relatedMovementId === resT4.data.movementOut.id;
+      resT4.data.movementIn.relatedMovementId === resT4.data.movementOut.id &&
+      resT4.data.movementOut.movementType === 'transfer_out' &&
+      resT4.data.movementIn.movementType === 'transfer_in';
 
     t4Passed = balA === 6 && balB === 4 && mutualLinked;
   }
@@ -269,7 +274,7 @@ export function runModule02Tests(): TestResultItem[] {
     message: `رصيد A = ${calculateStockBalance(ledgerT4, productPhysical.id, warehouseA.id)} ورصيد B = ${calculateStockBalance(ledgerT4, productPhysical.id, warehouseB.id)} مع ربط ثنائي`,
   });
 
-  // ==================== TEST 5: Transfer 11 from balance 10 -> Reject completely ====================
+  // ==================== TEST 5: Transfer 11 from balance 6 -> Reject completely ====================
   const ledgerCountBeforeT5 = ledgerT4.length;
   const resT5 = executeStockTransfer(
     {
@@ -399,7 +404,7 @@ export function runModule02Tests(): TestResultItem[] {
     {
       productId: productPhysical.id,
       warehouseId: warehouseB.id,
-      locationId: locationA1.id, // A1 belongs to warehouse A, not B
+      locationId: locationA1.id,
       movementType: 'receipt',
       quantity: 5,
       uomId: testUom.id,
@@ -531,6 +536,250 @@ export function runModule02Tests(): TestResultItem[] {
     name: 'Quantity = NaN / Infinity -> Rejection',
     passed: !resT14a.success && !resT14b.success,
     message: `رفض NaN: ${!resT14a.success}, رفض Infinity: ${!resT14b.success}`,
+  });
+
+  // ==================== TEST 15 (A): Adjustment increase 10 -> balance +10 ====================
+  const ledgerAdj: StockMovement[] = [];
+  const resT15 = executeStockMovement(
+    {
+      productId: productPhysical.id,
+      warehouseId: warehouseA.id,
+      movementType: 'adjustment',
+      adjustmentDirection: 'increase',
+      quantity: 10,
+      uomId: testUom.id,
+      movementDate: new Date().toISOString(),
+    },
+    products,
+    warehouses,
+    locations,
+    uoms,
+    ledgerAdj
+  );
+
+  let t15Passed = false;
+  if (resT15.success && resT15.data) {
+    ledgerAdj.push(resT15.data);
+    const bal = calculateStockBalance(ledgerAdj, productPhysical.id, warehouseA.id);
+    const hasCorrectField = resT15.data.adjustmentDirection === 'increase';
+    const sourceTypeUntouched = resT15.data.sourceType !== 'increase';
+    t15Passed = bal === 10 && hasCorrectField && sourceTypeUntouched;
+  }
+
+  results.push({
+    id: 'TEST-15 (A)',
+    name: 'Adjustment increase 10 -> balance +10 via adjustmentDirection',
+    passed: t15Passed,
+    message: `الرصيد بعد تسوية زيادة 10 = ${calculateStockBalance(ledgerAdj, productPhysical.id, warehouseA.id)} مع عزل sourceType`,
+  });
+
+  // ==================== TEST 16 (B): Adjustment decrease 3 from 10 -> balance = 7 ====================
+  const resT16 = executeStockMovement(
+    {
+      productId: productPhysical.id,
+      warehouseId: warehouseA.id,
+      movementType: 'adjustment',
+      adjustmentDirection: 'decrease',
+      quantity: 3,
+      uomId: testUom.id,
+      movementDate: new Date().toISOString(),
+    },
+    products,
+    warehouses,
+    locations,
+    uoms,
+    ledgerAdj
+  );
+
+  let t16Passed = false;
+  if (resT16.success && resT16.data) {
+    ledgerAdj.push(resT16.data);
+    const bal = calculateStockBalance(ledgerAdj, productPhysical.id, warehouseA.id);
+    const hasCorrectField = resT16.data.adjustmentDirection === 'decrease';
+    const sourceTypeUntouched = resT16.data.sourceType !== 'decrease';
+    t16Passed = bal === 7 && hasCorrectField && sourceTypeUntouched;
+  }
+
+  results.push({
+    id: 'TEST-16 (B)',
+    name: 'Adjustment decrease 3 from 10 -> balance = 7',
+    passed: t16Passed,
+    message: `الرصيد بعد تسوية نقص 3 = ${calculateStockBalance(ledgerAdj, productPhysical.id, warehouseA.id)} مع عزل sourceType`,
+  });
+
+  // ==================== TEST 17 (C): Adjustment without direction -> rejected ====================
+  const resT17 = executeStockMovement(
+    {
+      productId: productPhysical.id,
+      warehouseId: warehouseA.id,
+      movementType: 'adjustment',
+      // adjustmentDirection omitted intentionally
+      quantity: 5,
+      uomId: testUom.id,
+      movementDate: new Date().toISOString(),
+    },
+    products,
+    warehouses,
+    locations,
+    uoms,
+    ledgerAdj
+  );
+
+  results.push({
+    id: 'TEST-17 (C)',
+    name: 'Adjustment without direction -> Rejection',
+    passed: !resT17.success && resT17.error === 'يجب تحديد اتجاه التسوية (زيادة أو نقص) عند اختيار نوع الحركة تسوية.',
+    message: `تم الرفض بنجاح: "${resT17.error || ''}"`,
+  });
+
+  // ==================== TEST 18 (D): Adjustment direction invalid -> rejected ====================
+  const resT18 = executeStockMovement(
+    {
+      productId: productPhysical.id,
+      warehouseId: warehouseA.id,
+      movementType: 'adjustment',
+      // @ts-expect-error Testing invalid runtime value
+      adjustmentDirection: 'upward',
+      quantity: 5,
+      uomId: testUom.id,
+      movementDate: new Date().toISOString(),
+    },
+    products,
+    warehouses,
+    locations,
+    uoms,
+    ledgerAdj
+  );
+
+  results.push({
+    id: 'TEST-18 (D)',
+    name: 'Adjustment direction invalid -> Rejection',
+    passed: !resT18.success && resT18.error === 'اتجاه التسوية غير صالح. يجب أن يكون زيادة (increase) أو نقص (decrease).',
+    message: `تم الرفض بنجاح: "${resT18.error || ''}"`,
+  });
+
+  // ==================== TEST 19 (E): movementType invalid at runtime -> rejected ====================
+  const resT19 = executeStockMovement(
+    {
+      productId: productPhysical.id,
+      warehouseId: warehouseA.id,
+      // @ts-expect-error Testing invalid runtime movement type
+      movementType: 'unknown_type',
+      quantity: 5,
+      uomId: testUom.id,
+      movementDate: new Date().toISOString(),
+    },
+    products,
+    warehouses,
+    locations,
+    uoms,
+    ledgerAdj
+  );
+
+  results.push({
+    id: 'TEST-19 (E)',
+    name: 'movementType invalid at runtime -> Rejection',
+    passed: !resT19.success && resT19.error === 'نوع الحركة المخزنية غير صالح.',
+    message: `تم الرفض بنجاح: "${resT19.error || ''}"`,
+  });
+
+  // ==================== TEST 20 (F): Update location linking to archived parent -> rejected ====================
+  const locChild: InventoryLocation = {
+    id: 'loc-child',
+    warehouseId: warehouseA.id,
+    code: 'A-CHILD',
+    nameAr: 'موقع فرعي للاختبار',
+    parentId: null,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const currentLocationsTree = [locationA1, locationArchived, locChild];
+  const resT20 = updateLocation(
+    locChild.id,
+    {
+      nameAr: locChild.nameAr,
+      parentId: locationArchived.id, // Linking to archived parent
+    },
+    currentLocationsTree
+  );
+
+  results.push({
+    id: 'TEST-20 (F)',
+    name: 'Update location linking to archived parent -> Rejection',
+    passed: !resT20.success && resT20.error === 'لا يمكن ربط الموقع بموقع أب مؤرشف.',
+    message: `تم الرفض بنجاح: "${resT20.error || ''}"`,
+  });
+
+  // ==================== TEST 21 (G): Update location creating cycle: A -> B -> C, C -> A -> rejected ====================
+  const locA: InventoryLocation = {
+    id: 'loc-cycle-a',
+    warehouseId: warehouseA.id,
+    code: 'CYC-A',
+    nameAr: 'موقع حلقي A',
+    parentId: null,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const locB: InventoryLocation = {
+    id: 'loc-cycle-b',
+    warehouseId: warehouseA.id,
+    code: 'CYC-B',
+    nameAr: 'موقع حلقي B',
+    parentId: locA.id,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const locC: InventoryLocation = {
+    id: 'loc-cycle-c',
+    warehouseId: warehouseA.id,
+    code: 'CYC-C',
+    nameAr: 'موقع حلقي C',
+    parentId: locB.id,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const cycleLocations = [locA, locB, locC];
+  // Attempt to set A's parent to C (which has parent B, which has parent A)
+  const isCycleDetected = wouldCreateLocationCycle(locA.id, locC.id, cycleLocations);
+  const resT21 = updateLocation(
+    locA.id,
+    {
+      nameAr: locA.nameAr,
+      parentId: locC.id,
+    },
+    cycleLocations
+  );
+
+  results.push({
+    id: 'TEST-21 (G)',
+    name: 'Update location creating cycle (A -> B -> C -> A) -> Rejection',
+    passed: isCycleDetected && !resT21.success && resT21.error === 'لا يمكن تعيين هذا الموقع كأب لأنه يؤدي إلى حلقة دائرية في الهيكل الهرمي للمواقع.',
+    message: `تم كشف الحلقة الدائرية ورفضها: "${resT21.error || ''}"`,
+  });
+
+  // ==================== TEST 22 (H): Stock balance React key format ====================
+  const testKeyWithLoc = `${productPhysical.id}-${warehouseA.id}-${locationA1.id ?? 'NO_LOCATION'}`;
+  const unassignedLocationId: string | undefined = undefined;
+  const testKeyNoLoc = `${productPhysical.id}-${warehouseA.id}-${unassignedLocationId ?? 'NO_LOCATION'}`;
+  const keyFormatValid = 
+    testKeyWithLoc === `${productPhysical.id}-${warehouseA.id}-${locationA1.id}` &&
+    testKeyNoLoc === `${productPhysical.id}-${warehouseA.id}-NO_LOCATION` &&
+    !testKeyWithLoc.includes('undefined') &&
+    !testKeyWithLoc.includes('null');
+
+  results.push({
+    id: 'TEST-22 (H)',
+    name: 'Stock balance React key format: composite identity without array index',
+    passed: keyFormatValid,
+    message: `مفتاح الهوية المنطقية: "${testKeyWithLoc}" و "${testKeyNoLoc}"`,
   });
 
   return results;

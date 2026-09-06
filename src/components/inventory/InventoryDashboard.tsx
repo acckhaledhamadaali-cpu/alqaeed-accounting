@@ -227,11 +227,11 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({
                 فحص القواعد الصارمة لـ Module 02
               </h2>
               <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-100 text-slate-700 rounded border border-slate-200">
-                14 اختبار
+                22 فحص معماري
               </span>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              التحقق التلقائي من عدم كسر القواعد: منع المخزون السالب، عزل الخدمات، الترابط الذري للمناقلات، وتتبع الـ Ledger.
+              التحقق التلقائي من القواعد الصارمة: منع المخزون السالب، عزل الخدمات، الترابط الذري للمناقلات، عزل اتجاه التسوية، ومنع الحلقات الهرمية.
             </p>
 
             <button
@@ -240,7 +240,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>تشغيل الاختبارات الإلزامية الـ 14</span>
+              <span>تشغيل حزمة الاختبارات المعمارية (22 فحص)</span>
             </button>
           </div>
 

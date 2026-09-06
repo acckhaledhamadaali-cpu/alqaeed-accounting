@@ -155,8 +155,8 @@ export const StockBalanceView: React.FC<StockBalanceViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredBalances.length > 0 ? (
-                filteredBalances.map((item, idx) => (
-                  <tr key={`${item.productId}-${item.warehouseId}-${item.locationId || 'noloc'}-${idx}`} className="hover:bg-slate-50/70">
+                filteredBalances.map((item) => (
+                  <tr key={`${item.productId}-${item.warehouseId}-${item.locationId ?? 'NO_LOCATION'}`} className="hover:bg-slate-50/70">
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       {item.product?.nameAr || item.productId}
                     </td>
