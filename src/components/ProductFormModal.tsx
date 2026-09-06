@@ -500,7 +500,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }`}
               >
                 <option value="">— اختر التصنيف —</option>
-                {(isEditing ? categories : categories.filter((cat) => cat.status === 'active'))
+                {categories
+                  .filter((cat) => cat.status === 'active' || (isEditing && cat.id === productToEdit?.categoryId))
                   .map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {buildCategoryPath(cat.id, categories)}
@@ -539,7 +540,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }`}
               >
                 <option value="">— اختر وحدة القياس —</option>
-                {(isEditing ? uoms : uoms.filter((u) => u.status === 'active'))
+                {uoms
+                  .filter((u) => u.status === 'active' || (isEditing && u.id === productToEdit?.baseUomId))
                   .map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.nameAr} ({u.code})
