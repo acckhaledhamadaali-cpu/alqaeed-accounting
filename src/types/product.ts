@@ -1,37 +1,37 @@
 /**
- * Product Master Types - MODULE 01 (Corrected Relational Architecture)
+ * Product Master Types - MODULE 01
  * 
- * تم تصميم هذا الملف ليعكس الكيانات المنفصلة المؤهلة للتحويل المباشر إلى جداول PostgreSQL:
- * 1. Product (الكيان الأساسي)
- * 2. ProductBarcode (1 : M باركود أساسي وبدائل)
- * 3. Category (تصنيفات هرمية متعددة المستويات Parent-Child)
- * 4. UnitOfMeasure (وحدات القياس ككيان مستقل)
- * 5. UomConversion (تمثيل مستقبلي لتحويلات الوحدات بدون تفعيل منطق المخزون الآن)
+ * كيانات السجل الرئيسي للأصناف (Master Data):
+ * 1. Product (الصنف)
+ * 2. ProductBarcode (الباركودات - علاقة 1 : M مع ثبات الـ IDs)
+ * 3. Category (شجرة التصنيفات الهرمية Parent-Child)
+ * 4. UnitOfMeasure (وحدة القياس المستقلة)
+ * 5. UomConversion (نموذج تحويل الوحدات المستقبلي)
  */
 
 export type ProductType = 'product' | 'service';
 export type EntityStatus = 'active' | 'archived';
 
 // ==========================================
-// 1. UNIT OF MEASURE ENTITY (وحدة القياس المستقلة)
+// 1. UNIT OF MEASURE ENTITY (وحدة القياس)
 // ==========================================
 export interface UnitOfMeasure {
-  id: string;               // UUID / Primary Key
-  nameAr: string;           // اسم الوحدة بالعربية (مثل: حبة، كرتون، كيلوجرام)
-  nameEn?: string;          // اسم الوحدة بالإنجليزية (مثل: Piece, Carton, Kg)
-  code: string;             // رمز الوحدة الفريد (مثل: PCS, CTN, KG, HR)
-  status: EntityStatus;     // الحالة
+  id: string;
+  nameAr: string;
+  nameEn?: string;
+  code: string;             // الرمز القياسي (مثل: PCS, CTN, KG)
+  status: EntityStatus;
   createdAt: string;
   updatedAt: string;
 }
 
-// Multi-UoM Future Support Definition (مخطط مستقبلي غير مفعل في المخزون حالياً)
+// Multi-UoM Future Support Definition
 export interface UomConversion {
   id: string;
   productId: string;
   fromUomId: string;
   toUomId: string;
-  conversionFactor: number; // e.g. 1 Carton = 24 Pieces (factor = 24)
+  conversionFactor: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -40,58 +40,58 @@ export interface UomConversion {
 // 2. HIERARCHICAL CATEGORY ENTITY (التصنيف الهرمي)
 // ==========================================
 export interface Category {
-  id: string;               // UUID / Primary Key
-  nameAr: string;           // اسم التصنيف بالعربية
-  nameEn?: string;          // اسم التصنيف بالإنجليزية
-  parentId?: string | null; // معرف التصنيف الأب (null إذا كان رئيسياً)
-  status: EntityStatus;     // الحالة
+  id: string;
+  nameAr: string;
+  nameEn?: string;
+  parentId?: string | null; // null للتصنيف الرئيسي، أو id التصنيف الأب
+  status: EntityStatus;
   createdAt: string;
   updatedAt: string;
 }
 
 // ==========================================
-// 3. PRODUCT BARCODE ENTITY (باركود الصنف - علاقة 1 إلى متعدد)
+// 3. PRODUCT BARCODE ENTITY (باركود الصنف)
 // ==========================================
 export interface ProductBarcode {
-  id: string;               // UUID / Primary Key
-  productId: string;        // Foreign Key -> products.id
-  barcode: string;          // الباركود الفريد على مستوى النظام
-  isPrimary: boolean;       // هل هو الباركود الأساسي؟ (أساسي واحد فقط لكل صنف)
+  id: string;
+  productId: string;
+  barcode: string;
+  isPrimary: boolean;       // صنف واحد يملك Primary Barcode واحد فقط
   createdAt: string;
   updatedAt: string;
 }
 
 // ==========================================
-// 4. PRODUCT ENTITY (بطاقة الصنف الماستر المصححة)
+// 4. PRODUCT ENTITY (الصنف)
 // ==========================================
 export interface Product {
-  id: string;               // UUID / Primary Key
-  nameAr: string;           // اسم الصنف بالعربية - مطلوب
-  nameEn?: string;          // اسم الصنف بالإنجليزية - اختياري
-  sku: string;              // وحدة إدارة المخزون SKU - مطلوب وفريد
-  categoryId: string;       // Foreign Key -> categories.id
-  baseUomId: string;        // Foreign Key -> units_of_measure.id
-  type: ProductType;        // نوع الصنف (product ملموس أو service خدمة)
-  status: EntityStatus;     // الحالة (active نشط أو archived مؤرشف)
-  description?: string;     // وصف الصنف - اختياري
-  imageUrl?: string;        // رابط أو معاينة صورة الصنف - اختياري
+  id: string;
+  nameAr: string;
+  nameEn?: string;
+  sku: string;
+  categoryId: string;
+  baseUomId: string;
+  type: ProductType;
+  status: EntityStatus;
+  description?: string;
+  imageUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 // ==========================================
-// 5. HYDRATED VIEW / DTO FOR RUNTIME & UI
+// 5. HYDRATED VIEW / DTO FOR UI
 // ==========================================
-// كائن العرض المكتمل بالعلاقات لواجهة المستخدم
 export interface ProductHydrated extends Product {
   barcodes: ProductBarcode[];
   category?: Category;
-  categoryPath?: string;    // المسار الهرمي كاملاً (مثال: مكملات غذائية > بروتين > Whey)
+  categoryPath?: string;
   baseUom?: UnitOfMeasure;
 }
 
-// مدخلات إنشاء وتحديث الصنف عبر الواجهة
+// مدخلات الباركود مع الحفاظ على المعرّف ID عند التعديل
 export interface BarcodeInput {
+  id?: string;              // معرف الباركود إن وجد مسبقاً لمنع إعادة الإنشاء العشوائي
   barcode: string;
   isPrimary: boolean;
 }
@@ -106,14 +106,26 @@ export interface CreateProductFormInput {
   status: EntityStatus;
   description?: string;
   imageUrl?: string;
-  barcodes: BarcodeInput[];  // قائمة الباركودات (أساسي + بدائل)
+  barcodes: BarcodeInput[];
+}
+
+export interface CreateCategoryInput {
+  nameAr: string;
+  nameEn?: string;
+  parentId?: string | null;
+}
+
+export interface CreateUomInput {
+  nameAr: string;
+  nameEn?: string;
+  code: string;
 }
 
 export interface ProductFilters {
-  searchQuery: string;       // بحث بالاسم (عربي / إنجليزي) أو SKU أو أي باركود (أساسي أو بديل)
-  categoryId: string;        // فلتر التصنيف الهرمي (الكل أو تصنيف محدد)
-  type: 'all' | ProductType; // فلتر النوع
-  status: 'all' | EntityStatus; // فلتر الحالة
+  searchQuery: string;
+  categoryId: string;        // 'all' أو معرف تصنيف محدد (يشمل كل التفرعات)
+  type: 'all' | ProductType;
+  status: 'all' | EntityStatus;
   sortBy: 'nameAr' | 'sku' | 'createdAt';
   sortOrder: 'asc' | 'desc';
 }

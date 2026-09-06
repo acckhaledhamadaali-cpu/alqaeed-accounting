@@ -6,14 +6,17 @@ import {
   UnitOfMeasure, 
   ProductHydrated, 
   ProductFilters, 
-  CreateProductFormInput 
+  CreateProductFormInput,
+  CreateCategoryInput,
+  CreateUomInput
 } from './types/product';
 import { 
-  INITIAL_MOCK_PRODUCTS, 
-  INITIAL_MOCK_BARCODES, 
-  MOCK_CATEGORIES, 
-  MOCK_UOMS, 
-  hydrateProducts 
+  INITIAL_PRODUCTS, 
+  INITIAL_BARCODES, 
+  INITIAL_CATEGORIES, 
+  INITIAL_UOMS, 
+  hydrateProducts,
+  getAllDescendantCategoryIds
 } from './data/mockProducts';
 import { Header } from './components/Header';
 import { ProductFiltersComponent } from './components/ProductFilters';
@@ -21,16 +24,18 @@ import { ProductList } from './components/ProductList';
 import { ProductFormModal } from './components/ProductFormModal';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { ArchiveConfirmModal } from './components/ArchiveConfirmModal';
-import { CheckCircle2, GitBranch, ShieldCheck } from 'lucide-react';
+import { CategoryManagerModal } from './components/CategoryManagerModal';
+import { UomManagerModal } from './components/UomManagerModal';
+import { Check } from 'lucide-react';
 
 export default function App() {
-  // Relational Master Entities in State (Simulating PostgreSQL tables in memory)
-  const [products, setProducts] = useState<Product[]>(INITIAL_MOCK_PRODUCTS);
-  const [barcodes, setBarcodes] = useState<ProductBarcode[]>(INITIAL_MOCK_BARCODES);
-  const [categories] = useState<Category[]>(MOCK_CATEGORIES);
-  const [uoms] = useState<UnitOfMeasure[]>(MOCK_UOMS);
+  // Pure Empty Enterprise Master Data State (Zero Mock Data)
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [barcodes, setBarcodes] = useState<ProductBarcode[]>(INITIAL_BARCODES);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [uoms, setUoms] = useState<UnitOfMeasure[]>(INITIAL_UOMS);
 
-  // Hydrated Products (Joined View for the UI)
+  // Hydrated Products (Joined relational view for UI)
   const hydratedProducts = useMemo(() => {
     return hydrateProducts(products, barcodes, categories, uoms);
   }, [products, barcodes, categories, uoms]);
@@ -47,6 +52,9 @@ export default function App() {
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isUomModalOpen, setIsUomModalOpen] = useState(false);
+
   const [productToEdit, setProductToEdit] = useState<ProductHydrated | null>(null);
   const [productToView, setProductToView] = useState<ProductHydrated | null>(null);
   const [productToArchive, setProductToArchive] = useState<ProductHydrated | null>(null);
@@ -58,18 +66,27 @@ export default function App() {
     setToastMessage(message);
     setTimeout(() => {
       setToastMessage(null);
-    }, 3500);
+    }, 3000);
   };
 
-  // Sample Barcodes for Scanner Simulation
-  const sampleBarcodes = useMemo(() => {
-    return barcodes.map((b) => b.barcode);
-  }, [barcodes]);
+  // Used Category & UoM IDs (to prevent accidental deletion if in use)
+  const usedCategoryIds = useMemo(() => {
+    return new Set(products.map((p) => p.categoryId));
+  }, [products]);
 
-  // Filter & Search Logic
+  const usedUomIds = useMemo(() => {
+    return new Set(products.map((p) => p.baseUomId));
+  }, [products]);
+
+  // RECURSIVE CATEGORY HIERARCHY FILTERING
   const filteredProducts = useMemo(() => {
+    // If a specific category is selected, collect its ID and ALL its descendant IDs
+    const allowedCategoryIds = filters.categoryId !== 'all'
+      ? getAllDescendantCategoryIds(filters.categoryId, categories)
+      : null;
+
     return hydratedProducts.filter((product) => {
-      // 1. Search Query (Arabic Name, English Name, SKU, and ANY Barcode in the 1:M relationship)
+      // 1. Search Query (Name Ar, Name En, SKU, and ANY Barcode)
       if (filters.searchQuery.trim()) {
         const query = filters.searchQuery.trim().toLowerCase();
         const matchesNameAr = product.nameAr.toLowerCase().includes(query);
@@ -84,30 +101,28 @@ export default function App() {
         }
       }
 
-      // 2. Hierarchical Category Filter
-      if (filters.categoryId !== 'all') {
-        // Also checks if the category or any child in hierarchy matches
-        const matchesCat = product.categoryId === filters.categoryId;
-        if (!matchesCat) return false;
+      // 2. Category Filter (Matches selected category OR any of its subcategories)
+      if (allowedCategoryIds && !allowedCategoryIds.has(product.categoryId)) {
+        return false;
       }
 
-      // 3. Type Filter (Product vs Service)
+      // 3. Type Filter
       if (filters.type !== 'all' && product.type !== filters.type) {
         return false;
       }
 
-      // 4. Status Filter (Active vs Archived)
+      // 4. Status Filter
       if (filters.status !== 'all' && product.status !== filters.status) {
         return false;
       }
 
       return true;
     });
-  }, [hydratedProducts, filters]);
+  }, [hydratedProducts, filters, categories]);
 
-  // Handler: Add New Product (Creates 1 Product Record + N ProductBarcode Records)
+  // Handler: Add New Product
   const handleCreateProduct = (data: CreateProductFormInput) => {
-    const newProductId = `P${Date.now().toString().slice(-4)}`;
+    const newProductId = `prd_${Date.now()}`;
     const now = new Date().toISOString();
 
     const newProduct: Product = {
@@ -126,7 +141,7 @@ export default function App() {
     };
 
     const newBarcodes: ProductBarcode[] = data.barcodes.map((bItem, idx) => ({
-      id: `bar-${Date.now()}-${idx}`,
+      id: `bar_${Date.now()}_${idx + 1}`,
       productId: newProductId,
       barcode: bItem.barcode.trim(),
       isPrimary: bItem.isPrimary,
@@ -136,19 +151,19 @@ export default function App() {
 
     setProducts((prev) => [newProduct, ...prev]);
     setBarcodes((prev) => [...prev, ...newBarcodes]);
-    showToast(`تمت إضافة الصنف "${newProduct.nameAr}" وربط ${newBarcodes.length} باركود بنجاح.`);
+    showToast(`تمت إضافة الصنف "${newProduct.nameAr}" بنجاح.`);
   };
 
-  // Handler: Edit Product
+  // Handler: Update Product (STRICT ID PERSISTENCE FOR PRODUCT BARCODES)
   const handleUpdateProduct = (data: CreateProductFormInput) => {
     if (!productToEdit) return;
-    const targetId = productToEdit.id;
+    const targetProductId = productToEdit.id;
     const now = new Date().toISOString();
 
-    // 1. Update Product Master entity
+    // 1. Update Product record
     setProducts((prev) =>
       prev.map((p) =>
-        p.id === targetId
+        p.id === targetProductId
           ? {
               ...p,
               nameAr: data.nameAr.trim(),
@@ -166,47 +181,121 @@ export default function App() {
       )
     );
 
-    // 2. Update ProductBarcodes (1:M relation sync)
-    const updatedBarcodes: ProductBarcode[] = data.barcodes.map((bItem, idx) => ({
-      id: `bar-${Date.now()}-${idx}`,
-      productId: targetId,
-      barcode: bItem.barcode.trim(),
-      isPrimary: bItem.isPrimary,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    // 2. Barcode synchronization preserving IDs:
+    setBarcodes((prev) => {
+      // Barcodes belonging to OTHER products remain completely untouched
+      const otherBarcodes = prev.filter((b) => b.productId !== targetProductId);
+      const currentProductBarcodes = prev.filter((b) => b.productId === targetProductId);
+      const existingBarcodeMap = new Map<string, ProductBarcode>(
+        currentProductBarcodes.map((b) => [b.id, b])
+      );
 
-    setBarcodes((prev) => [
-      ...prev.filter((b) => b.productId !== targetId),
-      ...updatedBarcodes,
-    ]);
+      const resolvedBarcodes: ProductBarcode[] = data.barcodes.map((inputItem) => {
+        const existingRecord = inputItem.id ? existingBarcodeMap.get(inputItem.id) : undefined;
+        if (existingRecord) {
+          // EXISTING BARCODE: Preserve original ID, productId, and createdAt!
+          return {
+            id: existingRecord.id,
+            productId: existingRecord.productId,
+            barcode: inputItem.barcode.trim(),
+            isPrimary: inputItem.isPrimary,
+            createdAt: existingRecord.createdAt,
+            updatedAt: now,
+          };
+        } else {
+          // NEW BARCODE: Generate new ID
+          return {
+            id: `bar_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            productId: targetProductId,
+            barcode: inputItem.barcode.trim(),
+            isPrimary: inputItem.isPrimary,
+            createdAt: now,
+            updatedAt: now,
+          };
+        }
+      });
 
-    showToast(`تم تحديث بيانات الصنف "${data.nameAr}" وسجل الباركودات بنجاح.`);
+      return [...otherBarcodes, ...resolvedBarcodes];
+    });
+
+    showToast(`تم حفظ تعديلات الصنف "${data.nameAr}".`);
     setProductToEdit(null);
   };
 
   // Handler: Archive / Unarchive Toggle
-  const handleConfirmArchiveToggle = (product: ProductHydrated) => {
+  const handleConfirmArchiveToggle = (product: Product) => {
     const nextStatus = product.status === 'active' ? 'archived' : 'active';
     const now = new Date().toISOString();
 
     setProducts((prev) =>
       prev.map((p) =>
-        p.id === product.id
-          ? { ...p, status: nextStatus, updatedAt: now }
-          : p
+        p.id === product.id ? { ...p, status: nextStatus, updatedAt: now } : p
       )
     );
 
     showToast(
       nextStatus === 'archived'
-        ? `تمت أرشفة الصنف "${product.nameAr}". لن يظهر في شاشات المبيعات الجديدة.`
+        ? `تمت أرشفة الصنف "${product.nameAr}".`
         : `تمت استعادة وتنشيط الصنف "${product.nameAr}".`
     );
     setProductToArchive(null);
   };
 
-  // Handler: Reset Filters
+  // Handler: Add Category
+  const handleAddCategory = (input: CreateCategoryInput) => {
+    const now = new Date().toISOString();
+    const newCategory: Category = {
+      id: `cat_${Date.now()}`,
+      nameAr: input.nameAr,
+      nameEn: input.nameEn,
+      parentId: input.parentId || null,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setCategories((prev) => [...prev, newCategory]);
+    showToast(`تمت إضافة التصنيف "${newCategory.nameAr}" بنجاح.`);
+  };
+
+  // Handler: Delete Category
+  const handleDeleteCategory = (categoryId: string) => {
+    if (usedCategoryIds.has(categoryId)) {
+      showToast('لا يمكن حذف هذا التصنيف لأنه مرتبط بأصناف مسجلة.');
+      return;
+    }
+    setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+    showToast('تم حذف التصنيف.');
+  };
+
+  // Handler: Add UoM
+  const handleAddUom = (input: CreateUomInput) => {
+    const now = new Date().toISOString();
+    const newUom: UnitOfMeasure = {
+      id: `uom_${Date.now()}`,
+      nameAr: input.nameAr,
+      nameEn: input.nameEn,
+      code: input.code.toUpperCase(),
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setUoms((prev) => [...prev, newUom]);
+    showToast(`تمت إضافة وحدة القياس "${newUom.nameAr} (${newUom.code})" بنجاح.`);
+  };
+
+  // Handler: Delete UoM
+  const handleDeleteUom = (uomId: string) => {
+    if (usedUomIds.has(uomId)) {
+      showToast('لا يمكن حذف هذه الوحدة لأنها مرتبطة بأصناف مسجلة.');
+      return;
+    }
+    setUoms((prev) => prev.filter((u) => u.id !== uomId));
+    showToast('تم حذف وحدة القياس.');
+  };
+
+  // Reset Filters
   const handleResetFilters = () => {
     setFilters({
       searchQuery: '',
@@ -218,82 +307,63 @@ export default function App() {
     });
   };
 
-  // Handler: Simulate Barcode Scan
-  const handleBarcodeScanSimulate = (barcode: string) => {
-    setFilters((prev) => ({ ...prev, searchQuery: barcode }));
-    showToast(`تمت محاكاة مسح الباركود: ${barcode}`);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-emerald-500 selection:text-white pb-12">
+    <div className="min-h-screen bg-slate-100/60 text-slate-900 flex flex-col selection:bg-slate-800 selection:text-white pb-12 font-sans antialiased">
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 left-5 right-5 sm:right-auto sm:left-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900 text-white rounded-xl shadow-lg text-sm font-medium">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div className="fixed bottom-4 left-4 right-4 sm:right-auto sm:left-6 z-50 flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-lg shadow-md text-xs sm:text-sm font-medium">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Main Module Header */}
+      {/* Clean ERP Header */}
       <Header
         products={hydratedProducts}
         totalBarcodesCount={barcodes.length}
+        totalCategoriesCount={categories.length}
+        totalUomsCount={uoms.length}
         onOpenAddModal={() => setIsAddModalOpen(true)}
+        onOpenCategoryManager={() => setIsCategoryModalOpen(true)}
+        onOpenUomManager={() => setIsUomModalOpen(true)}
       />
 
-      {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1 w-full">
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4 flex-1 w-full">
         
-        {/* Module Scope Banner */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs sm:text-sm text-slate-700">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg shrink-0">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-bold text-slate-900">الهيكلية المصححة لـ MODULE 01: </span>
-              <span>دعم تعدد الباركودات (1:M)، شجرة تصنيفات هرمية (Parent-Child)، ووحدات قياس مستقلة (Base UoM) مهيأة لـ PostgreSQL.</span>
-            </div>
-          </div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-700 rounded-md font-mono text-xs shrink-0">
-            <GitBranch className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Master Data Only</span>
-          </div>
-        </div>
-
-        {/* Filters & Search Control */}
+        {/* Search & Filters */}
         <ProductFiltersComponent
           filters={filters}
           categories={categories}
-          sampleBarcodes={sampleBarcodes}
           onFilterChange={(updated) => setFilters((prev) => ({ ...prev, ...updated }))}
           onResetFilters={handleResetFilters}
-          onBarcodeScanSimulate={handleBarcodeScanSimulate}
         />
 
-        {/* Products Results Header */}
-        <div className="flex items-center justify-between px-1">
-          <div className="text-xs sm:text-sm font-bold text-slate-700">
-            نتائج الأصناف ({filteredProducts.length} من أصل {products.length} صنف)
+        {/* Results Info Bar */}
+        {products.length > 0 && (
+          <div className="flex items-center justify-between px-1 text-xs text-slate-600">
+            <div>
+              الأصناف المعروضة: <span className="font-bold text-slate-900">{filteredProducts.length}</span> من أصل <span className="font-bold text-slate-900">{products.length}</span> صنف
+            </div>
+            <div className="font-mono text-slate-500">
+              {barcodes.length} باركود مسجل
+            </div>
           </div>
-          <div className="text-xs text-slate-500 font-mono">
-            {barcodes.length} باركود مسجل إجمالاً
-          </div>
-        </div>
+        )}
 
-        {/* Products Table & Mobile Cards */}
+        {/* Product Table / Cards / Empty State */}
         <ProductList
           products={filteredProducts}
+          totalProductsCount={products.length}
           onViewProduct={(product) => setProductToView(product)}
           onEditProduct={(product) => setProductToEdit(product)}
           onRequestArchiveToggle={(product) => setProductToArchive(product)}
+          onOpenAddModal={() => setIsAddModalOpen(true)}
         />
 
       </main>
 
-      {/* Modals */}
-      
       {/* 1. Add Product Modal */}
       <ProductFormModal
         isOpen={isAddModalOpen}
@@ -303,6 +373,12 @@ export default function App() {
         categories={categories}
         uoms={uoms}
         allBarcodes={barcodes}
+        onOpenCategoryManager={() => {
+          setIsCategoryModalOpen(true);
+        }}
+        onOpenUomManager={() => {
+          setIsUomModalOpen(true);
+        }}
       />
 
       {/* 2. Edit Product Modal */}
@@ -315,6 +391,8 @@ export default function App() {
         categories={categories}
         uoms={uoms}
         allBarcodes={barcodes}
+        onOpenCategoryManager={() => setIsCategoryModalOpen(true)}
+        onOpenUomManager={() => setIsUomModalOpen(true)}
       />
 
       {/* 3. Product Details Modal */}
@@ -331,12 +409,32 @@ export default function App() {
         }}
       />
 
-      {/* 4. Archive / Unarchive Confirmation Modal */}
+      {/* 4. Archive Confirmation Modal */}
       <ArchiveConfirmModal
         isOpen={!!productToArchive}
         product={productToArchive}
         onClose={() => setProductToArchive(null)}
         onConfirm={handleConfirmArchiveToggle}
+      />
+
+      {/* 5. Category Manager Modal */}
+      <CategoryManagerModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        categories={categories}
+        onAddCategory={handleAddCategory}
+        onDeleteCategory={handleDeleteCategory}
+        usedCategoryIds={usedCategoryIds}
+      />
+
+      {/* 6. UoM Manager Modal */}
+      <UomManagerModal
+        isOpen={isUomModalOpen}
+        onClose={() => setIsUomModalOpen(false)}
+        uoms={uoms}
+        onAddUom={handleAddUom}
+        onDeleteUom={handleDeleteUom}
+        usedUomIds={usedUomIds}
       />
 
     </div>

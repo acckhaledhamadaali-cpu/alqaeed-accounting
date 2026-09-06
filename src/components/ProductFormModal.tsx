@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
-  Sparkles, 
-  AlertCircle, 
-  Box, 
-  Wrench, 
-  Check, 
   Plus, 
   Trash2, 
-  Barcode as BarcodeIcon,
-  Layers,
-  Tag
+  Check, 
+  AlertCircle 
 } from 'lucide-react';
 import { 
   ProductHydrated, 
@@ -31,6 +25,8 @@ interface ProductFormModalProps {
   categories: Category[];
   uoms: UnitOfMeasure[];
   allBarcodes: ProductBarcode[];
+  onOpenCategoryManager: () => void;
+  onOpenUomManager: () => void;
 }
 
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({
@@ -42,6 +38,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   categories,
   uoms,
   allBarcodes,
+  onOpenCategoryManager,
+  onOpenUomManager,
 }) => {
   const isEditing = !!productToEdit;
 
@@ -49,8 +47,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     nameAr: '',
     nameEn: '',
     sku: '',
-    categoryId: categories[0]?.id || '',
-    baseUomId: uoms[0]?.id || '',
+    categoryId: '',
+    baseUomId: '',
     type: 'product',
     status: 'active',
     description: '',
@@ -63,18 +61,27 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     sku?: string;
     categoryId?: string;
     baseUomId?: string;
+    barcodesGeneral?: string;
     barcodeItems?: Record<number, string>;
   }>({});
 
   useEffect(() => {
     if (productToEdit) {
+      // PRESERVE EXISTING BARCODE IDs
       const editBarcodes: BarcodeInput[] = productToEdit.barcodes.length > 0
-        ? productToEdit.barcodes.map((b) => ({ barcode: b.barcode, isPrimary: b.isPrimary }))
+        ? productToEdit.barcodes.map((b) => ({
+            id: b.id, // Preserved exact existing ID!
+            barcode: b.barcode,
+            isPrimary: b.isPrimary,
+          }))
         : [{ barcode: '', isPrimary: true }];
 
-      // Ensure at least one is primary
-      if (!editBarcodes.some((b) => b.isPrimary)) {
-        editBarcodes[0].isPrimary = true;
+      // Ensure exactly 1 is primary
+      const primaryCount = editBarcodes.filter((b) => b.isPrimary).length;
+      if (primaryCount !== 1 && editBarcodes.length > 0) {
+        editBarcodes.forEach((b, idx) => {
+          b.isPrimary = idx === 0;
+        });
       }
 
       setFormData({
@@ -108,41 +115,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Saudi 628 Barcode Generator
-  const generateRandomBarcode = (index: number) => {
-    const randomNineDigits = Math.floor(100000000 + Math.random() * 900000000).toString();
-    const generated = `628${randomNineDigits}1`;
-    
-    setFormData((prev) => {
-      const nextBars = [...prev.barcodes];
-      nextBars[index] = { ...nextBars[index], barcode: generated };
-      return { ...prev, barcodes: nextBars };
-    });
-
-    if (errors.barcodeItems?.[index]) {
-      setErrors((prev) => {
-        const nextItems = { ...prev.barcodeItems };
-        delete nextItems[index];
-        return { ...prev, barcodeItems: nextItems };
-      });
-    }
-  };
-
-  // Suggested SKU Generator
-  const generateSuggestedSKU = () => {
-    const prefix = formData.type === 'service' ? 'SRV' : 'PRD';
-    const cleanAr = formData.nameAr
-      ? formData.nameAr.slice(0, 3).toUpperCase()
-      : 'ITM';
-    const rand = Math.floor(100 + Math.random() * 900);
-    const generated = `${prefix}-${cleanAr}-${rand}`;
-    setFormData((prev) => ({ ...prev, sku: generated }));
-    if (errors.sku) {
-      setErrors((prev) => ({ ...prev, sku: undefined }));
-    }
-  };
-
-  // Add Alternative Barcode
+  // Add Alternative Barcode row (id is undefined for new barcodes)
   const handleAddAlternativeBarcode = () => {
     setFormData((prev) => ({
       ...prev,
@@ -150,20 +123,24 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }));
   };
 
-  // Remove Alternative Barcode
+  // Remove Barcode row (only removes the specific row)
   const handleRemoveBarcode = (index: number) => {
-    if (formData.barcodes.length <= 1) return; // Keep at least one
+    if (formData.barcodes.length <= 1) return;
+
     setFormData((prev) => {
+      const isRemovingPrimary = prev.barcodes[index]?.isPrimary;
       const nextBars = prev.barcodes.filter((_, i) => i !== index);
-      // Ensure one primary remains
-      if (!nextBars.some((b) => b.isPrimary) && nextBars.length > 0) {
+
+      // If we removed the primary barcode, designate the first remaining as primary
+      if (isRemovingPrimary && nextBars.length > 0) {
         nextBars[0].isPrimary = true;
       }
+
       return { ...prev, barcodes: nextBars };
     });
   };
 
-  // Change Barcode Value
+  // Change Barcode text (keeps the existing id intact!)
   const handleBarcodeChange = (index: number, val: string) => {
     setFormData((prev) => {
       const nextBars = [...prev.barcodes];
@@ -180,30 +157,34 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }
   };
 
-  // Set Primary Barcode
+  // Radio selection: Exactly ONE primary barcode
   const handleSetPrimaryBarcode = (index: number) => {
     setFormData((prev) => {
       const nextBars = prev.barcodes.map((b, i) => ({
         ...b,
-        isPrimary: i === index,
+        isPrimary: i === index, // Automatically unsets all others!
       }));
       return { ...prev, barcodes: nextBars };
     });
+
+    if (errors.barcodesGeneral) {
+      setErrors((prev) => ({ ...prev, barcodesGeneral: undefined }));
+    }
   };
 
-  // Form Validation
+  // Strict Validation
   const validate = (): boolean => {
     const newErrors: typeof errors = {};
     const itemErrors: Record<number, string> = {};
 
     // 1. Name Ar
     if (!formData.nameAr.trim()) {
-      newErrors.nameAr = 'اسم الصنف بالعربية حقل إلزامي.';
+      newErrors.nameAr = 'اسم الصنف بالعربية إلزامي.';
     }
 
     // 2. SKU
     if (!formData.sku.trim()) {
-      newErrors.sku = 'رمز SKU حقل إلزامي.';
+      newErrors.sku = 'رمز SKU إلزامي.';
     } else {
       const isDuplicateSku = existingProducts.some(
         (p) =>
@@ -211,20 +192,26 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           p.id !== productToEdit?.id
       );
       if (isDuplicateSku) {
-        newErrors.sku = 'رمز الـ SKU مستخدم بالفعل لصنف آخر. يجب أن يكون فريداً على مستوى النظام.';
+        newErrors.sku = 'رمز SKU مستخدم لصنف آخر. يجب أن يكون فريداً.';
       }
     }
 
     // 3. Category & UoM
     if (!formData.categoryId) {
-      newErrors.categoryId = 'يرجى اختيار تصنيف من شجرة التصنيفات.';
+      newErrors.categoryId = 'يرجى اختيار التصنيف التابع له الصنف.';
     }
     if (!formData.baseUomId) {
-      newErrors.baseUomId = 'يرجى تحديد وحدة القياس الأساسية.';
+      newErrors.baseUomId = 'يرجى اختيار وحدة القياس الأساسية.';
     }
 
-    // 4. Barcodes Validation (1:M & Uniqueness)
-    const seenBarcodes = new Set<string>();
+    // 4. Primary Barcode & Uniqueness Rules
+    const primaryCount = formData.barcodes.filter((b) => b.isPrimary).length;
+    if (primaryCount !== 1) {
+      newErrors.barcodesGeneral = 'يجب تحديد باركود أساسي واحد فقط للصنف.';
+    }
+
+    const seenBarcodesInForm = new Set<string>();
+    // Barcodes belonging to other products in system
     const otherProductBarcodes = allBarcodes.filter(
       (b) => b.productId !== productToEdit?.id
     );
@@ -233,26 +220,26 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       const code = bItem.barcode.trim();
       if (!code) {
         if (bItem.isPrimary) {
-          itemErrors[idx] = 'الباركود الأساسي إلزامي.';
+          itemErrors[idx] = 'قيمة الباركود الأساسي مطلوبة.';
         } else {
-          itemErrors[idx] = 'لا يمكن ترك حقل الباركود فارغاً (أدخل القيمة أو احذف السطر).';
+          itemErrors[idx] = 'يرجى إدخال قيمة الباركود أو حذف هذا السطر.';
         }
         return;
       }
 
       // Check duplicates within the same product form
-      if (seenBarcodes.has(code)) {
-        itemErrors[idx] = 'هذا الباركود مكرر ضمن نفس بطاقة الصنف.';
+      if (seenBarcodesInForm.has(code)) {
+        itemErrors[idx] = 'هذا الباركود مكرر في نفس بطاقة الصنف.';
         return;
       }
-      seenBarcodes.add(code);
+      seenBarcodesInForm.add(code);
 
-      // Check system-wide uniqueness
+      // Check system-wide uniqueness across other products
       const existsInSystem = otherProductBarcodes.some(
         (ob) => ob.barcode.trim() === code
       );
       if (existsInSystem) {
-        itemErrors[idx] = 'هذا الباركود مستخدم بالفعل ومسجل لصنف آخر في النظام.';
+        itemErrors[idx] = 'هذا الباركود مسجل لصنف آخر في النظام.';
       }
     });
 
@@ -273,46 +260,37 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white w-full max-w-2xl rounded-xl shadow-lg border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* Modal Header */}
-        <div className="px-5 sm:px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
+        <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">
-              {isEditing ? 'تعديل بيانات الصنف (Product Master)' : 'إضافة صنف جديد إلى السجل الرئيسي'}
+            <h3 className="text-base font-bold text-slate-900">
+              {isEditing ? 'تعديل بيانات الصنف' : 'إضافة صنف جديد إلى سجل الماستر'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              نموذج البيانات العلائقي: يدعم تعدد الباركودات، شجرة التصنيفات، ووحدات القياس المستقلة
+              بطاقة تعريف الصنف (Product Master Data)
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body - Scrollable */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-5 sm:p-6 space-y-5 flex-1">
+        {/* Modal Body */}
+        <form onSubmit={handleSubmit} className="overflow-y-auto p-5 space-y-4 flex-1 text-xs sm:text-sm">
           
-          {/* Engineering Boundary Notice */}
-          <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3.5 flex items-start gap-3 text-xs text-amber-900">
-            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <strong className="font-semibold text-amber-950">قاعدة معمارية هامة:</strong> لا يتم إدخال أسعار البيع، أو تكاليف الشراء، أو الكميات والمخزون في بطاقة الصنف (Master). الصنف يمثل المعرّف الموحد، بينما الأسعار والكميات تتبع حركات الفواتير والمخزون اللاحقة.
-            </div>
-          </div>
-
-          {/* Form Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             
             {/* Arabic Name (Required) */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label htmlFor="input-name-ar" className="block text-xs font-bold text-slate-700">
-                اسم الصنف بالعربية <span className="text-rose-600">*</span>
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor="input-name-ar" className="block text-xs font-semibold text-slate-700">
+                اسم الصنف (عربي) <span className="text-rose-600">*</span>
               </label>
               <input
                 id="input-name-ar"
@@ -322,20 +300,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   setFormData((prev) => ({ ...prev, nameAr: e.target.value }));
                   if (errors.nameAr) setErrors((prev) => ({ ...prev, nameAr: undefined }));
                 }}
-                placeholder="مثال: بروتين واي جولد ستاندرد 2 كجم / خدمة صيانة..."
-                className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-colors ${
-                  errors.nameAr ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200'
+                placeholder="أدخل الاسم بالعربية..."
+                className={`w-full px-3 py-2 bg-white border rounded-md text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 ${
+                  errors.nameAr ? 'border-rose-400' : 'border-slate-300'
                 }`}
               />
               {errors.nameAr && (
-                <p className="text-xs text-rose-600 font-medium">{errors.nameAr}</p>
+                <p className="text-xs text-rose-600">{errors.nameAr}</p>
               )}
             </div>
 
             {/* English Name (Optional) */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label htmlFor="input-name-en" className="block text-xs font-medium text-slate-700">
-                اسم الصنف بالإنجليزية (اختياري)
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor="input-name-en" className="block text-xs font-semibold text-slate-700">
+                اسم الصنف (إنجليزي)
               </label>
               <input
                 id="input-name-en"
@@ -343,118 +321,105 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 dir="ltr"
                 value={formData.nameEn}
                 onChange={(e) => setFormData((prev) => ({ ...prev, nameEn: e.target.value }))}
-                placeholder="e.g. Whey Protein Gold Standard 2KG..."
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-left transition-colors"
+                placeholder="Enter English Name (optional)..."
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 text-left"
               />
             </div>
 
-            {/* SKU (Required & Unique) */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <div className="flex items-center justify-between">
-                <label htmlFor="input-sku" className="block text-xs font-bold text-slate-700">
-                  رمز SKU <span className="text-rose-600">*</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={generateSuggestedSKU}
-                  className="text-[11px] text-emerald-700 hover:text-emerald-800 font-semibold inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  <span>اقتراح رمز SKU</span>
-                </button>
-              </div>
+            {/* SKU (Required) */}
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor="input-sku" className="block text-xs font-semibold text-slate-700">
+                رمز SKU <span className="text-rose-600">*</span>
+              </label>
               <input
                 id="input-sku"
                 type="text"
                 dir="ltr"
                 value={formData.sku}
                 onChange={(e) => {
-                  setFormData((prev) => ({ ...prev, sku: e.target.value }));
+                  setFormData((prev) => ({ ...prev, sku: e.target.value.toUpperCase() }));
                   if (errors.sku) setErrors((prev) => ({ ...prev, sku: undefined }));
                 }}
-                placeholder="e.g. SUP-WHEY-2KG"
-                className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-left uppercase transition-colors ${
-                  errors.sku ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200'
+                placeholder="مثال: PRD-001"
+                className={`w-full px-3 py-2 bg-white border rounded-md font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 text-left uppercase ${
+                  errors.sku ? 'border-rose-400' : 'border-slate-300'
                 }`}
               />
               {errors.sku && (
-                <p className="text-xs text-rose-600 font-medium">{errors.sku}</p>
+                <p className="text-xs text-rose-600">{errors.sku}</p>
               )}
             </div>
 
-            {/* MULTIPLE BARCODES SECTION (1 : M RELATION) */}
-            <div className="space-y-3 sm:col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-4">
+            {/* MULTIPLE BARCODES SECTION */}
+            <div className="space-y-2.5 sm:col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-3.5">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                    <BarcodeIcon className="w-4 h-4 text-emerald-600" />
-                    <span>الباركودات المسجلة للصنف (1:M Barcodes)</span>
-                  </label>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    يمكن تسجيل باركود أساسي واحد وباركودات بديلة (شحنات مختلفة، موردين، أو عبوات كرتونية)
-                  </p>
+                  <div className="text-xs font-bold text-slate-800">
+                    الباركودات المسجلة للصنف (1:M Barcodes)
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    يجب تحديد باركود أساسي واحد فقط، مع إمكانية إضافة باركودات بديلة.
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleAddAlternativeBarcode}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-800 rounded border border-slate-300 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>إضافة باركود بديل</span>
                 </button>
               </div>
 
+              {errors.barcodesGeneral && (
+                <p className="text-xs text-rose-600 font-medium">{errors.barcodesGeneral}</p>
+              )}
+
               {/* Barcode Rows */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {formData.barcodes.map((bItem, idx) => (
                   <div key={idx} className="space-y-1">
                     <div className="flex items-center gap-2">
-                      {/* Primary Toggle Indicator */}
+                      {/* Primary Radio Selector */}
                       <button
                         type="button"
                         onClick={() => handleSetPrimaryBarcode(idx)}
-                        className={`px-2.5 py-2 rounded-lg text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1 border ${
+                        className={`px-2.5 py-1.5 rounded text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1 border ${
                           bItem.isPrimary
-                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
-                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
                         }`}
-                        title={bItem.isPrimary ? 'الباركود الأساسي الحالي' : 'اضغط لجعله الباركود الأساسي'}
+                        title={bItem.isPrimary ? 'الباركود الأساسي' : 'تعيين كباركود أساسي'}
                       >
                         {bItem.isPrimary && <Check className="w-3 h-3 stroke-[3]" />}
-                        <span>{bItem.isPrimary ? 'الأساسي (Primary)' : 'بديل (Alt)'}</span>
+                        <span>{bItem.isPrimary ? 'الأساسي' : 'بديل'}</span>
                       </button>
 
-                      {/* Barcode Input */}
-                      <div className="relative flex-1">
-                        <input
-                          type="text"
-                          dir="ltr"
-                          value={bItem.barcode}
-                          onChange={(e) => handleBarcodeChange(idx, e.target.value)}
-                          placeholder={bItem.isPrimary ? 'أدخل الباركود الأساسي (628...)' : 'أدخل باركود بديل...'}
-                          className={`w-full px-3 py-2 bg-white border rounded-lg text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-left transition-colors ${
-                            errors.barcodeItems?.[idx] ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200'
-                          }`}
-                        />
-                      </div>
+                      {/* Barcode Input Field */}
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={bItem.barcode}
+                        onChange={(e) => handleBarcodeChange(idx, e.target.value)}
+                        placeholder={bItem.isPrimary ? 'أدخل الباركود الأساسي...' : 'أدخل باركود بديل...'}
+                        className={`flex-1 px-3 py-1.5 bg-white border rounded text-xs sm:text-sm font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 text-left ${
+                          errors.barcodeItems?.[idx] ? 'border-rose-400' : 'border-slate-300'
+                        }`}
+                      />
 
-                      {/* Saudi Generator Button */}
-                      <button
-                        type="button"
-                        onClick={() => generateRandomBarcode(idx)}
-                        className="px-2.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium shrink-0 inline-flex items-center gap-1 transition-colors cursor-pointer"
-                        title="توليد باركود سعودي قياسي 628"
-                      >
-                        <Sparkles className="w-3 h-3 text-emerald-600" />
-                        <span className="hidden sm:inline">توليد 628</span>
-                      </button>
+                      {/* Persistent ID Badge (if existing) */}
+                      {bItem.id && (
+                        <span className="hidden sm:inline font-mono text-[10px] text-slate-400 bg-slate-100 px-1.5 py-1 rounded border border-slate-200">
+                          {bItem.id}
+                        </span>
+                      )}
 
-                      {/* Delete Button (Only for alternatives if more than 1 barcode) */}
+                      {/* Delete button if >1 barcodes */}
                       {formData.barcodes.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveBarcode(idx)}
-                          className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 transition-colors shrink-0 cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
                           title="حذف هذا الباركود"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -462,11 +427,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                       )}
                     </div>
 
-                    {/* Inline Item Error */}
                     {errors.barcodeItems?.[idx] && (
-                      <p className="text-xs text-rose-600 font-medium pr-2">
-                        {errors.barcodeItems[idx]}
-                      </p>
+                      <p className="text-xs text-rose-600 pr-1">{errors.barcodeItems[idx]}</p>
                     )}
                   </div>
                 ))}
@@ -474,11 +436,19 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
 
             {/* Hierarchical Category (Required) */}
-            <div className="space-y-1.5">
-              <label htmlFor="input-category" className="flex items-center gap-1 text-xs font-bold text-slate-700">
-                <Tag className="w-3.5 h-3.5 text-slate-500" />
-                <span>التصنيف الهرمي (Category) <span className="text-rose-600">*</span></span>
-              </label>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor="input-category" className="block text-xs font-semibold text-slate-700">
+                  التصنيف الهرمي <span className="text-rose-600">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={onOpenCategoryManager}
+                  className="text-[11px] text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                >
+                  + تصنيف جديد
+                </button>
+              </div>
               <select
                 id="input-category"
                 value={formData.categoryId}
@@ -486,30 +456,36 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   setFormData((prev) => ({ ...prev, categoryId: e.target.value }));
                   if (errors.categoryId) setErrors((prev) => ({ ...prev, categoryId: undefined }));
                 }}
-                className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white ${
-                  errors.categoryId ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200'
+                className={`w-full px-3 py-2 bg-white border rounded-md text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 ${
+                  errors.categoryId ? 'border-rose-400' : 'border-slate-300'
                 }`}
               >
-                {categories.map((cat) => {
-                  const path = buildCategoryPath(cat.id, categories);
-                  return (
-                    <option key={cat.id} value={cat.id}>
-                      {path}
-                    </option>
-                  );
-                })}
+                <option value="">— اختر التصنيف —</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {buildCategoryPath(cat.id, categories)}
+                  </option>
+                ))}
               </select>
               {errors.categoryId && (
-                <p className="text-xs text-rose-600 font-medium">{errors.categoryId}</p>
+                <p className="text-xs text-rose-600">{errors.categoryId}</p>
               )}
             </div>
 
             {/* Base Unit of Measure (Required) */}
-            <div className="space-y-1.5">
-              <label htmlFor="input-base-uom" className="flex items-center gap-1 text-xs font-bold text-slate-700">
-                <Layers className="w-3.5 h-3.5 text-slate-500" />
-                <span>وحدة القياس الأساسية (Base UoM) <span className="text-rose-600">*</span></span>
-              </label>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor="input-base-uom" className="block text-xs font-semibold text-slate-700">
+                  وحدة القياس الأساسية <span className="text-rose-600">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={onOpenUomManager}
+                  className="text-[11px] text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                >
+                  + وحدة قياس جديدة
+                </button>
+              </div>
               <select
                 id="input-base-uom"
                 value={formData.baseUomId}
@@ -517,151 +493,116 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   setFormData((prev) => ({ ...prev, baseUomId: e.target.value }));
                   if (errors.baseUomId) setErrors((prev) => ({ ...prev, baseUomId: undefined }));
                 }}
-                className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-lg text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white ${
-                  errors.baseUomId ? 'border-rose-400 ring-1 ring-rose-300' : 'border-slate-200'
+                className={`w-full px-3 py-2 bg-white border rounded-md text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 ${
+                  errors.baseUomId ? 'border-rose-400' : 'border-slate-300'
                 }`}
               >
+                <option value="">— اختر وحدة القياس —</option>
                 {uoms.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.nameAr} ({u.code}) {u.nameEn ? `- ${u.nameEn}` : ''}
+                    {u.nameAr} ({u.code})
                   </option>
                 ))}
               </select>
               {errors.baseUomId && (
-                <p className="text-xs text-rose-600 font-medium">{errors.baseUomId}</p>
+                <p className="text-xs text-rose-600">{errors.baseUomId}</p>
               )}
             </div>
 
-            {/* Type (Product vs Service) */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">
+            {/* Product Type */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700">
                 نوع الصنف <span className="text-rose-600">*</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setFormData((prev) => ({ ...prev, type: 'product' }))}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                  className={`py-2 px-3 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
                     formData.type === 'product'
-                      ? 'bg-blue-50 border-blue-500 text-blue-800 ring-2 ring-blue-400/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  <Box className="w-4 h-4 text-blue-600" />
-                  <span>منتج (ملموس)</span>
+                  منتج (ملموس)
                 </button>
                 <button
                   type="button"
                   onClick={() => setFormData((prev) => ({ ...prev, type: 'service' }))}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                  className={`py-2 px-3 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
                     formData.type === 'service'
-                      ? 'bg-purple-50 border-purple-500 text-purple-800 ring-2 ring-purple-400/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  <Wrench className="w-4 h-4 text-purple-600" />
-                  <span>خدمة (غير ملموس)</span>
+                  خدمة (غير ملموس)
                 </button>
               </div>
             </div>
 
-            {/* Status (Active vs Archived) */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">
+            {/* Status */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700">
                 الحالة التشغيلية <span className="text-rose-600">*</span>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setFormData((prev) => ({ ...prev, status: 'active' }))}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                  className={`py-2 px-3 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
                     formData.status === 'active'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-400/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>نشط (متاح)</span>
+                  نشط
                 </button>
                 <button
                   type="button"
                   onClick={() => setFormData((prev) => ({ ...prev, status: 'archived' }))}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                  className={`py-2 px-3 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
                     formData.status === 'archived'
-                      ? 'bg-amber-50 border-amber-500 text-amber-800 ring-2 ring-amber-400/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                  <span>مؤرشف (محفوظ)</span>
+                  مؤرشف
                 </button>
               </div>
             </div>
 
-            {/* Image URL (Optional) */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label htmlFor="input-image" className="block text-xs font-medium text-slate-700">
-                رابط صورة الصنف (اختياري)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  id="input-image"
-                  type="url"
-                  dir="ltr"
-                  value={formData.imageUrl}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, imageUrl: e.target.value }))}
-                  placeholder="https://example.com/item-image.jpg"
-                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white text-left transition-colors"
-                />
-                {formData.imageUrl && (
-                  <div className="w-10 h-10 rounded-lg border border-slate-200 bg-slate-100 overflow-hidden shrink-0">
-                    <img
-                      src={formData.imageUrl}
-                      alt="معاينة"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Description (Optional) */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label htmlFor="input-description" className="block text-xs font-medium text-slate-700">
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor="input-description" className="block text-xs font-semibold text-slate-700">
                 الوصف والملاحظات (اختياري)
               </label>
               <textarea
                 id="input-description"
-                rows={3}
+                rows={2}
                 value={formData.description}
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="أدخل أي مواصفات أو تفاصيل إضافية للصنف..."
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white resize-none"
+                placeholder="أدخل أي ملاحظات فنية أو مواصفات للصنف..."
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800 resize-none"
               />
             </div>
 
           </div>
 
           {/* Form Actions */}
-          <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+              className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md text-xs font-semibold transition-colors cursor-pointer"
             >
               إلغاء
             </button>
             <button
               id="btn-submit-product-form"
               type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-xs hover:shadow-sm transition-colors cursor-pointer"
+              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Check className="w-4 h-4" />
-              <span>{isEditing ? 'حفظ التعديلات' : 'إضافة الصنف'}</span>
+              {isEditing ? 'حفظ التعديلات' : 'إضافة الصنف'}
             </button>
           </div>
 
