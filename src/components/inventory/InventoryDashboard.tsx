@@ -227,7 +227,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({
                 فحص القواعد الصارمة لـ Module 02
               </h2>
               <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-100 text-slate-700 rounded border border-slate-200">
-                22 فحص معماري
+                18 اختبار معماري
               </span>
             </div>
             <p className="text-xs text-slate-500 mb-4">
@@ -240,7 +240,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>تشغيل حزمة الاختبارات المعمارية (22 فحص)</span>
+              <span>تشغيل حزمة الاختبارات المعمارية (TEST 1 - TEST 18)</span>
             </button>
           </div>
 

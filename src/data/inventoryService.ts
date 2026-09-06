@@ -675,6 +675,14 @@ export function updateLocation(
     return { success: false, error: 'موقع التخزين غير موجود.' };
   }
 
+  // Location Warehouse Immutability: prevent changing warehouseId
+  if ('warehouseId' in (input as unknown as Record<string, unknown>)) {
+    const attemptedWhId = (input as unknown as Record<string, unknown>).warehouseId;
+    if (attemptedWhId && attemptedWhId !== loc.warehouseId) {
+      return { success: false, error: 'لا يمكن تغيير المستودع التابع له موقع التخزين.' };
+    }
+  }
+
   const nameAr = input.nameAr.trim();
   if (!nameAr) {
     return { success: false, error: 'اسم موقع التخزين بالعربية مطلوب.' };
@@ -682,8 +690,11 @@ export function updateLocation(
 
   // Parent hierarchy & integrity validation
   if (input.parentId) {
-    if (input.parentId === id) {
-      return { success: false, error: 'لا يمكن تعيين الموقع كأب لنفسه.' };
+    if (input.parentId === id || wouldCreateLocationCycle(id, input.parentId, locations)) {
+      return {
+        success: false,
+        error: 'لا يمكن تعيين الموقع الأب لأنه سيؤدي إلى إنشاء دورة في هيكل مواقع التخزين.',
+      };
     }
     const parent = locations.find((l) => l.id === input.parentId);
     if (!parent) {
@@ -694,12 +705,6 @@ export function updateLocation(
     }
     if (parent.status === 'archived') {
       return { success: false, error: 'لا يمكن ربط الموقع بموقع أب مؤرشف.' };
-    }
-    if (wouldCreateLocationCycle(id, input.parentId, locations)) {
-      return {
-        success: false,
-        error: 'لا يمكن تعيين هذا الموقع كأب لأنه يؤدي إلى حلقة دائرية في الهيكل الهرمي للمواقع.',
-      };
     }
   }
 
