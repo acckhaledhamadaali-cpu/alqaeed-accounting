@@ -1,6 +1,6 @@
 {
   "name": "إدارة الأصناف - Product Master",
-  "description": "وحدة إدارة بطاقة وسجل الأصناف والخدمات الأساسية لنظام نقاط البيع وإدارة المخزون والمحاسبة",
+  "description": "نظام ERP مالي ومخزني: سجل الأصناف الرئيسي (Module 01) وإدارة المخزون وحركات المستودعات والـ Ledger (Module 02)",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
