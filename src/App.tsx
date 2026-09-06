@@ -330,16 +330,22 @@ export default function App() {
   };
 
   // Handler: Archive / Activate UoM (Preserving ID & relational integrity)
-  const handleToggleUomStatus = (uomId: string) => {
+  const handleToggleUomStatus = (uomId: string): { success: boolean; message: string } => {
+    // 1. Locate the target UoM by ID before performing any state modification
+    const targetUom = uoms.find((u) => u.id === uomId);
+    if (!targetUom) {
+      const errMsg = 'وحدة القياس غير موجودة.';
+      showToast(errMsg);
+      return { success: false, message: errMsg };
+    }
+
+    // 2. Target exists: proceed with state update while preserving ID and createdAt
     const now = new Date().toISOString();
-    let uomName = '';
-    let willArchive = false;
+    const willArchive = targetUom.status === 'active';
 
     setUoms((prev) =>
       prev.map((u) => {
         if (u.id === uomId) {
-          uomName = u.nameAr;
-          willArchive = u.status === 'active';
           return {
             ...u,
             status: willArchive ? 'archived' : 'active',
@@ -350,11 +356,12 @@ export default function App() {
       })
     );
 
-    showToast(
-      willArchive
-        ? `تمت أرشفة وحدة القياس "${uomName}".`
-        : `تم تنشيط وحدة القياس "${uomName}".`
-    );
+    const msg = willArchive
+      ? `تمت أرشفة وحدة القياس "${targetUom.nameAr}".`
+      : `تم تنشيط وحدة القياس "${targetUom.nameAr}".`;
+
+    showToast(msg);
+    return { success: true, message: msg };
   };
 
   // Reset Filters

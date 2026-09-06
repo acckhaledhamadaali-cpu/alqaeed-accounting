@@ -7,7 +7,7 @@ interface UomManagerModalProps {
   onClose: () => void;
   uoms: UnitOfMeasure[];
   onAddUom: (input: CreateUomInput) => void;
-  onToggleUomStatus: (uomId: string) => void;
+  onToggleUomStatus: (uomId: string) => { success: boolean; message?: string } | void;
 }
 
 export const UomManagerModal: React.FC<UomManagerModalProps> = ({
@@ -23,6 +23,7 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
     code: '',
   });
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
 
   if (!isOpen) return null;
 
@@ -57,6 +58,15 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
       code: '',
     });
     setError(null);
+    setActionMessage(null);
+  };
+
+  const handleRowToggle = (uomId: string) => {
+    setActionMessage(null);
+    const result = onToggleUomStatus(uomId);
+    if (result && !result.success && result.message) {
+      setActionMessage({ text: result.message, type: 'error' });
+    }
   };
 
   return (
@@ -149,6 +159,26 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
             </div>
           </form>
 
+          {/* Action Message (e.g. Failure/Validation message) */}
+          {actionMessage && (
+            <div
+              className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                actionMessage.type === 'error'
+                  ? 'bg-rose-50 border-rose-200 text-rose-800'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              }`}
+            >
+              <span>{actionMessage.text}</span>
+              <button
+                type="button"
+                onClick={() => setActionMessage(null)}
+                className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* UoMs List or Professional Empty State */}
           <div className="space-y-2">
             <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
@@ -206,7 +236,7 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
                         {isArchived ? (
                           <button
                             type="button"
-                            onClick={() => onToggleUomStatus(uom.id)}
+                            onClick={() => handleRowToggle(uom.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
                             title="إعادة تنشيط وحدة القياس"
                           >
@@ -216,7 +246,7 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onToggleUomStatus(uom.id)}
+                            onClick={() => handleRowToggle(uom.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                             title="أرشفة وحدة القياس"
                           >
