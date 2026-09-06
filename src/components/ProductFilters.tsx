@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Search, X, RotateCcw, Filter } from 'lucide-react';
 import { ProductFilters, Category } from '../types/product';
-import { buildCategoryPath } from '../data/mockProducts';
+import { buildCategoryPath } from '../data/masterDataUtils';
 
 interface ProductFiltersProps {
   filters: ProductFilters;

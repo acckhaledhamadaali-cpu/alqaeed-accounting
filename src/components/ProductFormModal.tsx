@@ -14,7 +14,7 @@ import {
   ProductBarcode,
   BarcodeInput 
 } from '../types/product';
-import { buildCategoryPath } from '../data/mockProducts';
+import { buildCategoryPath } from '../data/masterDataUtils';
 
 interface ProductFormModalProps {
   isOpen: boolean;

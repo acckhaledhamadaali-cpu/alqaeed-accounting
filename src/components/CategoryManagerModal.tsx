@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Trash2, FolderTree, Check } from 'lucide-react';
 import { Category, CreateCategoryInput } from '../types/product';
-import { buildCategoryPath } from '../data/mockProducts';
+import { buildCategoryPath } from '../data/masterDataUtils';
 
 interface CategoryManagerModalProps {
   isOpen: boolean;

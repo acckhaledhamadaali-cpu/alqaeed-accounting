@@ -1,23 +1,16 @@
 import { Product, ProductBarcode, Category, UnitOfMeasure, ProductHydrated } from '../types/product';
 
 /**
- * MODULE 01 — MASTER DATA REPOSITORY
+ * MODULE 01 — MASTER DATA UTILITIES & REPOSITORY CONSTANTS
  * 
- * جميع الجداول تبدأ فارغة تماماً (Zero Mock Data).
- * لا توجد أي بيانات وهمية أو تجريبية أو افتراضية.
- * الواجهة تعرض حالات Empty State احترافية بانتظار إدخال البيانات الحقيقية.
+ * Enterprise Master Data utilities for Product Master, Barcodes, Hierarchical Categories, and UoMs.
+ * All collections default to pure empty state.
  */
 
 export const INITIAL_PRODUCTS: Product[] = [];
 export const INITIAL_BARCODES: ProductBarcode[] = [];
 export const INITIAL_CATEGORIES: Category[] = [];
 export const INITIAL_UOMS: UnitOfMeasure[] = [];
-
-// Backwards-compatible aliases if referenced
-export const INITIAL_MOCK_PRODUCTS = INITIAL_PRODUCTS;
-export const INITIAL_MOCK_BARCODES = INITIAL_BARCODES;
-export const MOCK_CATEGORIES = INITIAL_CATEGORIES;
-export const MOCK_UOMS = INITIAL_UOMS;
 
 /**
  * بناء مسار التصنيف الهرمي (مثال: أجهزة > هواتف > إكسسوارات)

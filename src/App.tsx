@@ -17,7 +17,7 @@ import {
   INITIAL_UOMS, 
   hydrateProducts,
   getAllDescendantCategoryIds
-} from './data/mockProducts';
+} from './data/masterDataUtils';
 import { Header } from './components/Header';
 import { ProductFiltersComponent } from './components/ProductFilters';
 import { ProductList } from './components/ProductList';
@@ -29,7 +29,7 @@ import { UomManagerModal } from './components/UomManagerModal';
 import { Check } from 'lucide-react';
 
 export default function App() {
-  // Pure Empty Enterprise Master Data State (Zero Mock Data)
+  // Pure Empty Enterprise Master Data State
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [barcodes, setBarcodes] = useState<ProductBarcode[]>(INITIAL_BARCODES);
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
