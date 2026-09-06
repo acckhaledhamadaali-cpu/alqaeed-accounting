@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Layers } from 'lucide-react';
+import { X, Plus, Archive, RotateCcw, Layers } from 'lucide-react';
 import { UnitOfMeasure, CreateUomInput } from '../types/product';
 
 interface UomManagerModalProps {
@@ -7,7 +7,7 @@ interface UomManagerModalProps {
   onClose: () => void;
   uoms: UnitOfMeasure[];
   onAddUom: (input: CreateUomInput) => void;
-  onDeleteUom?: (uomId: string) => void;
+  onToggleUomStatus: (uomId: string) => void;
   usedUomIds?: Set<string>;
 }
 
@@ -16,7 +16,7 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
   onClose,
   uoms,
   onAddUom,
-  onDeleteUom,
+  onToggleUomStatus,
   usedUomIds = new Set(),
 }) => {
   const [formData, setFormData] = useState<CreateUomInput>({
@@ -171,39 +171,62 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
             ) : (
               <div className="border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100 text-xs">
                 {uoms.map((uom) => {
-                  const isUsed = usedUomIds.has(uom.id);
+                  const isArchived = uom.status === 'archived';
 
                   return (
                     <div key={uom.id} className="p-3 bg-white flex items-center justify-between gap-2 hover:bg-slate-50">
                       <div className="flex items-center gap-2.5">
-                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-800 font-mono font-bold">
+                        <span className={`px-2 py-0.5 border rounded font-mono font-bold ${
+                          isArchived
+                            ? 'bg-slate-50 border-slate-200 text-slate-400 line-through'
+                            : 'bg-slate-100 border-slate-200 text-slate-800'
+                        }`}>
                           {uom.code}
                         </span>
                         <div>
-                          <span className="font-semibold text-slate-900">{uom.nameAr}</span>
+                          <span className={`font-semibold ${isArchived ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                            {uom.nameAr}
+                          </span>
                           {uom.nameEn && (
                             <span className="text-slate-400 text-[11px] mr-1.5 font-sans">
                               ({uom.nameEn})
                             </span>
                           )}
+                          <span
+                            className={`mr-2 px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                              isArchived
+                                ? 'bg-slate-100 text-slate-500 border-slate-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {isArchived ? 'مؤرشف' : 'نشط'}
+                          </span>
                         </div>
                       </div>
 
-                      {onDeleteUom && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteUom(uom.id)}
-                          disabled={isUsed}
-                          className={`p-1.5 rounded transition-colors ${
-                            isUsed
-                              ? 'text-slate-300 cursor-not-allowed'
-                              : 'text-rose-600 hover:bg-rose-50 cursor-pointer'
-                          }`}
-                          title={isUsed ? 'لا يمكن الحذف لأن هذه الوحدة مستخدمة في أصناف مسجلة' : 'حذف وحدة القياس'}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      <div>
+                        {isArchived ? (
+                          <button
+                            type="button"
+                            onClick={() => onToggleUomStatus(uom.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                            title="إعادة تنشيط وحدة القياس"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>تنشيط</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onToggleUomStatus(uom.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            title="أرشفة وحدة القياس"
+                          >
+                            <Archive className="w-3.5 h-3.5 text-slate-500" />
+                            <span>أرشفة</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

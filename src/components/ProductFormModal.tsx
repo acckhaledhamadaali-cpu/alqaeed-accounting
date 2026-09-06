@@ -101,8 +101,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         nameAr: '',
         nameEn: '',
         sku: '',
-        categoryId: categories[0]?.id || '',
-        baseUomId: uoms[0]?.id || '',
+        categoryId: categories.find((c) => c.status === 'active')?.id || '',
+        baseUomId: uoms.find((u) => u.status === 'active')?.id || '',
         type: 'product',
         status: 'active',
         description: '',
@@ -199,9 +199,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     // 3. Category & UoM
     if (!formData.categoryId) {
       newErrors.categoryId = 'يرجى اختيار التصنيف التابع له الصنف.';
+    } else if (!isEditing) {
+      const selectedCat = categories.find((c) => c.id === formData.categoryId);
+      if (selectedCat && selectedCat.status === 'archived') {
+        newErrors.categoryId = 'التصنيف المختار مؤرشف ولا يمكن اختياره لصنف جديد.';
+      }
     }
+
     if (!formData.baseUomId) {
       newErrors.baseUomId = 'يرجى اختيار وحدة القياس الأساسية.';
+    } else if (!isEditing) {
+      const selectedUom = uoms.find((u) => u.id === formData.baseUomId);
+      if (selectedUom && selectedUom.status === 'archived') {
+        newErrors.baseUomId = 'وحدة القياس المختارة مؤرشفة ولا يمكن اختيارها لصنف جديد.';
+      }
     }
 
     // 4. Primary Barcode & Uniqueness Rules
@@ -461,11 +472,14 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }`}
               >
                 <option value="">— اختر التصنيف —</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {buildCategoryPath(cat.id, categories)}
-                  </option>
-                ))}
+                {categories
+                  .filter((cat) => cat.status === 'active' || (isEditing && cat.id === formData.categoryId))
+                  .map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {buildCategoryPath(cat.id, categories)}
+                      {cat.status === 'archived' ? ' (مؤرشف)' : ''}
+                    </option>
+                  ))}
               </select>
               {errors.categoryId && (
                 <p className="text-xs text-rose-600">{errors.categoryId}</p>
@@ -498,11 +512,14 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 }`}
               >
                 <option value="">— اختر وحدة القياس —</option>
-                {uoms.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nameAr} ({u.code})
-                  </option>
-                ))}
+                {uoms
+                  .filter((u) => u.status === 'active' || (isEditing && u.id === formData.baseUomId))
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nameAr} ({u.code})
+                      {u.status === 'archived' ? ' (مؤرشف)' : ''}
+                    </option>
+                  ))}
               </select>
               {errors.baseUomId && (
                 <p className="text-xs text-rose-600">{errors.baseUomId}</p>

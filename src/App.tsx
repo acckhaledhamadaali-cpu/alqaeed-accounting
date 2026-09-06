@@ -122,7 +122,7 @@ export default function App() {
 
   // Handler: Add New Product
   const handleCreateProduct = (data: CreateProductFormInput) => {
-    const newProductId = `prd_${Date.now()}`;
+    const newProductId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const newProduct: Product = {
@@ -140,8 +140,8 @@ export default function App() {
       updatedAt: now,
     };
 
-    const newBarcodes: ProductBarcode[] = data.barcodes.map((bItem, idx) => ({
-      id: `bar_${Date.now()}_${idx + 1}`,
+    const newBarcodes: ProductBarcode[] = data.barcodes.map((bItem) => ({
+      id: crypto.randomUUID(),
       productId: newProductId,
       barcode: bItem.barcode.trim(),
       isPrimary: bItem.isPrimary,
@@ -203,9 +203,9 @@ export default function App() {
             updatedAt: now,
           };
         } else {
-          // NEW BARCODE: Generate new ID
+          // NEW BARCODE: Generate new UUID
           return {
-            id: `bar_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            id: crypto.randomUUID(),
             productId: targetProductId,
             barcode: inputItem.barcode.trim(),
             isPrimary: inputItem.isPrimary,
@@ -245,7 +245,7 @@ export default function App() {
   const handleAddCategory = (input: CreateCategoryInput) => {
     const now = new Date().toISOString();
     const newCategory: Category = {
-      id: `cat_${Date.now()}`,
+      id: crypto.randomUUID(),
       nameAr: input.nameAr,
       nameEn: input.nameEn,
       parentId: input.parentId || null,
@@ -258,21 +258,39 @@ export default function App() {
     showToast(`تمت إضافة التصنيف "${newCategory.nameAr}" بنجاح.`);
   };
 
-  // Handler: Delete Category
-  const handleDeleteCategory = (categoryId: string) => {
-    if (usedCategoryIds.has(categoryId)) {
-      showToast('لا يمكن حذف هذا التصنيف لأنه مرتبط بأصناف مسجلة.');
-      return;
-    }
-    setCategories((prev) => prev.filter((c) => c.id !== categoryId));
-    showToast('تم حذف التصنيف.');
+  // Handler: Archive / Activate Category (Preserving ID & relational integrity)
+  const handleToggleCategoryStatus = (categoryId: string) => {
+    const now = new Date().toISOString();
+    let categoryName = '';
+    let willArchive = false;
+
+    setCategories((prev) =>
+      prev.map((c) => {
+        if (c.id === categoryId) {
+          categoryName = c.nameAr;
+          willArchive = c.status === 'active';
+          return {
+            ...c,
+            status: willArchive ? 'archived' : 'active',
+            updatedAt: now,
+          };
+        }
+        return c;
+      })
+    );
+
+    showToast(
+      willArchive
+        ? `تمت أرشفة التصنيف "${categoryName}".`
+        : `تم تنشيط التصنيف "${categoryName}".`
+    );
   };
 
   // Handler: Add UoM
   const handleAddUom = (input: CreateUomInput) => {
     const now = new Date().toISOString();
     const newUom: UnitOfMeasure = {
-      id: `uom_${Date.now()}`,
+      id: crypto.randomUUID(),
       nameAr: input.nameAr,
       nameEn: input.nameEn,
       code: input.code.toUpperCase(),
@@ -285,14 +303,32 @@ export default function App() {
     showToast(`تمت إضافة وحدة القياس "${newUom.nameAr} (${newUom.code})" بنجاح.`);
   };
 
-  // Handler: Delete UoM
-  const handleDeleteUom = (uomId: string) => {
-    if (usedUomIds.has(uomId)) {
-      showToast('لا يمكن حذف هذه الوحدة لأنها مرتبطة بأصناف مسجلة.');
-      return;
-    }
-    setUoms((prev) => prev.filter((u) => u.id !== uomId));
-    showToast('تم حذف وحدة القياس.');
+  // Handler: Archive / Activate UoM (Preserving ID & relational integrity)
+  const handleToggleUomStatus = (uomId: string) => {
+    const now = new Date().toISOString();
+    let uomName = '';
+    let willArchive = false;
+
+    setUoms((prev) =>
+      prev.map((u) => {
+        if (u.id === uomId) {
+          uomName = u.nameAr;
+          willArchive = u.status === 'active';
+          return {
+            ...u,
+            status: willArchive ? 'archived' : 'active',
+            updatedAt: now,
+          };
+        }
+        return u;
+      })
+    );
+
+    showToast(
+      willArchive
+        ? `تمت أرشفة وحدة القياس "${uomName}".`
+        : `تم تنشيط وحدة القياس "${uomName}".`
+    );
   };
 
   // Reset Filters
@@ -423,7 +459,7 @@ export default function App() {
         onClose={() => setIsCategoryModalOpen(false)}
         categories={categories}
         onAddCategory={handleAddCategory}
-        onDeleteCategory={handleDeleteCategory}
+        onToggleCategoryStatus={handleToggleCategoryStatus}
         usedCategoryIds={usedCategoryIds}
       />
 
@@ -433,7 +469,7 @@ export default function App() {
         onClose={() => setIsUomModalOpen(false)}
         uoms={uoms}
         onAddUom={handleAddUom}
-        onDeleteUom={handleDeleteUom}
+        onToggleUomStatus={handleToggleUomStatus}
         usedUomIds={usedUomIds}
       />
 

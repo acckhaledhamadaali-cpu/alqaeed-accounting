@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, FolderTree, Check } from 'lucide-react';
+import { X, Plus, Archive, RotateCcw, FolderTree } from 'lucide-react';
 import { Category, CreateCategoryInput } from '../types/product';
 import { buildCategoryPath } from '../data/masterDataUtils';
 
@@ -8,7 +8,7 @@ interface CategoryManagerModalProps {
   onClose: () => void;
   categories: Category[];
   onAddCategory: (input: CreateCategoryInput) => void;
-  onDeleteCategory?: (categoryId: string) => void;
+  onToggleCategoryStatus: (categoryId: string) => void;
   usedCategoryIds?: Set<string>;
 }
 
@@ -17,7 +17,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   onClose,
   categories,
   onAddCategory,
-  onDeleteCategory,
+  onToggleCategoryStatus,
   usedCategoryIds = new Set(),
 }) => {
   const [formData, setFormData] = useState<CreateCategoryInput>({
@@ -119,11 +119,13 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800"
                 >
                   <option value="">— تصنيف رئيسي (بدون أب) —</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {buildCategoryPath(c.id, categories)}
-                    </option>
-                  ))}
+                  {categories
+                    .filter((c) => c.status === 'active')
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {buildCategoryPath(c.id, categories)}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>
@@ -162,31 +164,53 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
               <div className="border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100 text-xs">
                 {categories.map((cat) => {
                   const fullPath = buildCategoryPath(cat.id, categories);
-                  const isUsed = usedCategoryIds.has(cat.id);
+                  const isArchived = cat.status === 'archived';
 
                   return (
                     <div key={cat.id} className="p-3 bg-white flex items-center justify-between gap-2 hover:bg-slate-50">
                       <div>
-                        <div className="font-semibold text-slate-900">{fullPath}</div>
+                        <div className="flex items-center gap-2">
+                          <span className={`font-semibold ${isArchived ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                            {fullPath}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                              isArchived
+                                ? 'bg-slate-100 text-slate-500 border-slate-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {isArchived ? 'مؤرشف' : 'نشط'}
+                          </span>
+                        </div>
                         <div className="text-[11px] text-slate-400 font-mono mt-0.5">
                           ID: {cat.id} {cat.parentId ? `| Parent: ${cat.parentId}` : '| تصنيف رئيسي'}
                         </div>
                       </div>
-                      {onDeleteCategory && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteCategory(cat.id)}
-                          disabled={isUsed}
-                          className={`p-1.5 rounded transition-colors ${
-                            isUsed
-                              ? 'text-slate-300 cursor-not-allowed'
-                              : 'text-rose-600 hover:bg-rose-50 cursor-pointer'
-                          }`}
-                          title={isUsed ? 'لا يمكن الحذف لأن هذا التصنيف مرتبط بمنتجات مسجلة' : 'حذف التصنيف'}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+
+                      <div>
+                        {isArchived ? (
+                          <button
+                            type="button"
+                            onClick={() => onToggleCategoryStatus(cat.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                            title="إعادة تنشيط التصنيف"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>تنشيط</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onToggleCategoryStatus(cat.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            title="أرشفة التصنيف"
+                          >
+                            <Archive className="w-3.5 h-3.5 text-slate-500" />
+                            <span>أرشفة</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
