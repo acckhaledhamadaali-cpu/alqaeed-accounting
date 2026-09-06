@@ -8,7 +8,6 @@ interface UomManagerModalProps {
   uoms: UnitOfMeasure[];
   onAddUom: (input: CreateUomInput) => void;
   onToggleUomStatus: (uomId: string) => void;
-  usedUomIds?: Set<string>;
 }
 
 export const UomManagerModal: React.FC<UomManagerModalProps> = ({
@@ -17,7 +16,6 @@ export const UomManagerModal: React.FC<UomManagerModalProps> = ({
   uoms,
   onAddUom,
   onToggleUomStatus,
-  usedUomIds = new Set(),
 }) => {
   const [formData, setFormData] = useState<CreateUomInput>({
     nameAr: '',

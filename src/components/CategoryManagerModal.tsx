@@ -8,8 +8,7 @@ interface CategoryManagerModalProps {
   onClose: () => void;
   categories: Category[];
   onAddCategory: (input: CreateCategoryInput) => void;
-  onToggleCategoryStatus: (categoryId: string) => void;
-  usedCategoryIds?: Set<string>;
+  onToggleCategoryStatus: (categoryId: string) => { success: boolean; message?: string } | void;
 }
 
 export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
@@ -18,7 +17,6 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   categories,
   onAddCategory,
   onToggleCategoryStatus,
-  usedCategoryIds = new Set(),
 }) => {
   const [formData, setFormData] = useState<CreateCategoryInput>({
     nameAr: '',
@@ -26,6 +24,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     parentId: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
 
   if (!isOpen) return null;
 
@@ -34,6 +33,14 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     if (!formData.nameAr.trim()) {
       setError('اسم التصنيف بالعربية مطلوب.');
       return;
+    }
+
+    if (formData.parentId) {
+      const parentCat = categories.find((c) => c.id === formData.parentId);
+      if (!parentCat || parentCat.status === 'archived') {
+        setError('التصنيف الأب المختار مؤرشف أو غير متاح. يرجى اختيار تصنيف نشط.');
+        return;
+      }
     }
 
     onAddCategory({
@@ -48,6 +55,15 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       parentId: null,
     });
     setError(null);
+    setActionMessage(null);
+  };
+
+  const handleRowToggle = (catId: string) => {
+    setActionMessage(null);
+    const result = onToggleCategoryStatus(catId);
+    if (result && !result.success && result.message) {
+      setActionMessage({ text: result.message, type: 'error' });
+    }
   };
 
   return (
@@ -143,6 +159,26 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             </div>
           </form>
 
+          {/* Action Message (e.g. Validation when parent is archived) */}
+          {actionMessage && (
+            <div
+              className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                actionMessage.type === 'error'
+                  ? 'bg-rose-50 border-rose-200 text-rose-800'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              }`}
+            >
+              <span>{actionMessage.text}</span>
+              <button
+                type="button"
+                onClick={() => setActionMessage(null)}
+                className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Categories List or Professional Empty State */}
           <div className="space-y-2">
             <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
@@ -165,6 +201,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                 {categories.map((cat) => {
                   const fullPath = buildCategoryPath(cat.id, categories);
                   const isArchived = cat.status === 'archived';
+                  const parentCat = cat.parentId ? categories.find((c) => c.id === cat.parentId) : null;
+                  const isParentArchived = parentCat ? parentCat.status === 'archived' : false;
 
                   return (
                     <div key={cat.id} className="p-3 bg-white flex items-center justify-between gap-2 hover:bg-slate-50">
@@ -182,6 +220,11 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                           >
                             {isArchived ? 'مؤرشف' : 'نشط'}
                           </span>
+                          {isArchived && isParentArchived && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              التصنيف الأب مؤرشف
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-400 font-mono mt-0.5">
                           ID: {cat.id} {cat.parentId ? `| Parent: ${cat.parentId}` : '| تصنيف رئيسي'}
@@ -192,9 +235,13 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                         {isArchived ? (
                           <button
                             type="button"
-                            onClick={() => onToggleCategoryStatus(cat.id)}
+                            onClick={() => handleRowToggle(cat.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
-                            title="إعادة تنشيط التصنيف"
+                            title={
+                              isParentArchived
+                                ? 'لا يمكن تنشيط هذا التصنيف لأن التصنيف الأب مؤرشف'
+                                : 'إعادة تنشيط التصنيف'
+                            }
                           >
                             <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
                             <span>تنشيط</span>
@@ -202,7 +249,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => onToggleCategoryStatus(cat.id)}
+                            onClick={() => handleRowToggle(cat.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                             title="أرشفة التصنيف"
                           >

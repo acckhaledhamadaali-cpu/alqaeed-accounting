@@ -69,15 +69,6 @@ export default function App() {
     }, 3000);
   };
 
-  // Used Category & UoM IDs (to prevent accidental deletion if in use)
-  const usedCategoryIds = useMemo(() => {
-    return new Set(products.map((p) => p.categoryId));
-  }, [products]);
-
-  const usedUomIds = useMemo(() => {
-    return new Set(products.map((p) => p.baseUomId));
-  }, [products]);
-
   // RECURSIVE CATEGORY HIERARCHY FILTERING
   const filteredProducts = useMemo(() => {
     // If a specific category is selected, collect its ID and ALL its descendant IDs
@@ -259,31 +250,66 @@ export default function App() {
   };
 
   // Handler: Archive / Activate Category (Preserving ID & relational integrity)
-  const handleToggleCategoryStatus = (categoryId: string) => {
+  const handleToggleCategoryStatus = (categoryId: string): { success: boolean; message: string } => {
+    const targetCat = categories.find((c) => c.id === categoryId);
+    if (!targetCat) {
+      return { success: false, message: 'التصنيف غير موجود.' };
+    }
+
     const now = new Date().toISOString();
-    let categoryName = '';
-    let willArchive = false;
 
-    setCategories((prev) =>
-      prev.map((c) => {
-        if (c.id === categoryId) {
-          categoryName = c.nameAr;
-          willArchive = c.status === 'active';
-          return {
-            ...c,
-            status: willArchive ? 'archived' : 'active',
-            updatedAt: now,
-          };
+    if (targetCat.status === 'active') {
+      // Archiving parent: Automatically archive all descendant categories under that parent
+      const descendantIds = getAllDescendantCategoryIds(categoryId, categories);
+      const subcategoriesCount = descendantIds.size - 1;
+
+      setCategories((prev) =>
+        prev.map((c) => {
+          if (descendantIds.has(c.id)) {
+            return {
+              ...c,
+              status: 'archived',
+              updatedAt: now,
+            };
+          }
+          return c;
+        })
+      );
+
+      const msg =
+        subcategoriesCount > 0
+          ? `تمت أرشفة التصنيف "${targetCat.nameAr}" وجميع التصنيفات الفرعية التابعة له (${subcategoriesCount}) بنجاح.`
+          : `تمت أرشفة التصنيف "${targetCat.nameAr}".`;
+      showToast(msg);
+      return { success: true, message: msg };
+    } else {
+      // Reactivating: It may only become active if its parent is active
+      if (targetCat.parentId) {
+        const parent = categories.find((c) => c.id === targetCat.parentId);
+        if (parent && parent.status === 'archived') {
+          const errMsg = `لا يمكن تنشيط التصنيف "${targetCat.nameAr}" لأن التصنيف الأب (${parent.nameAr}) مؤرشف. يرجى تنشيط التصنيف الأب أولاً.`;
+          showToast(errMsg);
+          return { success: false, message: errMsg };
         }
-        return c;
-      })
-    );
+      }
 
-    showToast(
-      willArchive
-        ? `تمت أرشفة التصنيف "${categoryName}".`
-        : `تم تنشيط التصنيف "${categoryName}".`
-    );
+      setCategories((prev) =>
+        prev.map((c) => {
+          if (c.id === categoryId) {
+            return {
+              ...c,
+              status: 'active',
+              updatedAt: now,
+            };
+          }
+          return c;
+        })
+      );
+
+      const msg = `تم تنشيط التصنيف "${targetCat.nameAr}".`;
+      showToast(msg);
+      return { success: true, message: msg };
+    }
   };
 
   // Handler: Add UoM
@@ -460,7 +486,6 @@ export default function App() {
         categories={categories}
         onAddCategory={handleAddCategory}
         onToggleCategoryStatus={handleToggleCategoryStatus}
-        usedCategoryIds={usedCategoryIds}
       />
 
       {/* 6. UoM Manager Modal */}
@@ -470,7 +495,6 @@ export default function App() {
         uoms={uoms}
         onAddUom={handleAddUom}
         onToggleUomStatus={handleToggleUomStatus}
-        usedUomIds={usedUomIds}
       />
 
     </div>
